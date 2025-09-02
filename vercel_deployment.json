@@ -1,0 +1,38 @@
+{
+  "name": "professional-voice-teleprompter",
+  "version": "1.0.0",
+  "description": "Professional voice-controlled teleprompter with social media streaming integration",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Static site - no build needed'",
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "teleprompter",
+    "voice-control",
+    "streaming",
+    "social-media",
+    "content-creation",
+    "youtube",
+    "facebook",
+    "tiktok",
+    "instagram",
+    "twitch"
+  ],
+  "author": "Professional Teleprompter Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/professional-voice-teleprompter.git"
+  },
+  "homepage": "https://professional-teleprompter.vercel.app",
+  "dependencies": {},
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
