@@ -1,0 +1,30 @@
+{
+  "name": "professional-voice-teleprompter",
+  "version": "1.0.0",
+  "description": "Professional teleprompter with Facebook Live integration",
+  "main": "index.html",
+  "scripts": {
+    "start": "vercel dev",
+    "build": "echo 'Static site - no build needed'",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "teleprompter",
+    "facebook-live",
+    "streaming",
+    "vercel",
+    "api"
+  ],
+  "author": "Rachid Chfira",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rachidchfira/telepromptervercel.git"
+  },
+  "homepage": "https://github.com/rachidchfira/telepromptervercel#readme"
+}
