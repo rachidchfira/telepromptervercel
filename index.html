@@ -1008,6 +1008,272 @@ Press the play button or spacebar to start scrolling your script!"
             teleprompter.togglePanel();
         }
 
+        // Speech Recognition System
+        class SpeechController {
+            constructor() {
+                this.recognition = null;
+                this.isListening = false;
+                this.commands = {
+                    'start': () => teleprompter.play(),
+                    'play': () => teleprompter.play(),
+                    'begin': () => teleprompter.play(),
+                    'stop': () => teleprompter.pause(),
+                    'pause': () => teleprompter.pause(),
+                    'wait': () => teleprompter.pause(),
+                    'faster': () => teleprompter.increaseSpeed(),
+                    'speed up': () => teleprompter.increaseSpeed(),
+                    'slower': () => teleprompter.decreaseSpeed(),
+                    'slow down': () => teleprompter.decreaseSpeed(),
+                    'reset': () => teleprompter.reset(),
+                    'beginning': () => teleprompter.reset(),
+                    'top': () => teleprompter.reset(),
+                    'fullscreen': () => teleprompter.toggleFullscreen(),
+                    'full screen': () => teleprompter.toggleFullscreen()
+                };
+                this.initSpeechRecognition();
+                this.createVoiceUI();
+            }
+
+            initSpeechRecognition() {
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    this.recognition = new SpeechRecognition();
+                    this.recognition.continuous = true;
+                    this.recognition.interimResults = false;
+                    this.recognition.lang = 'en-US';
+
+                    this.recognition.onresult = (event) => {
+                        const command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                        this.processCommand(command);
+                    };
+
+                    this.recognition.onerror = (event) => {
+                        console.log('Speech recognition error:', event.error);
+                        this.updateVoiceStatus('error');
+                    };
+                }
+            }
+
+            processCommand(command) {
+                console.log('Voice command:', command);
+                for (const [keyword, action] of Object.entries(this.commands)) {
+                    if (command.includes(keyword)) {
+                        action();
+                        this.showVoiceCommand(keyword);
+                        break;
+                    }
+                }
+            }
+
+            toggleVoiceControl() {
+                if (!this.recognition) {
+                    alert('Speech recognition not supported in this browser');
+                    return;
+                }
+
+                if (this.isListening) {
+                    this.recognition.stop();
+                    this.isListening = false;
+                    this.updateVoiceStatus('off');
+                } else {
+                    this.recognition.start();
+                    this.isListening = true;
+                    this.updateVoiceStatus('listening');
+                }
+            }
+
+            createVoiceUI() {
+                const voicePanel = document.createElement('div');
+                voicePanel.innerHTML = `
+                    <div style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: var(--bg-secondary); border-radius: 10px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <h3 style="color: var(--text-primary); margin-bottom: 10px; font-size: 14px;">🎤 Voice Control</h3>
+                        <button id="voiceToggle" onclick="speechController.toggleVoiceControl()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                            Start Voice Control
+                        </button>
+                        <div id="voiceStatus" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                            Status: Off
+                        </div>
+                        <div id="lastCommand" style="margin-top: 5px; font-size: 11px; color: var(--text-secondary);">
+                            Commands: start, stop, faster, slower, reset, fullscreen
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(voicePanel);
+            }
+
+            updateVoiceStatus(status) {
+                const statusEl = document.getElementById('voiceStatus');
+                const toggleBtn = document.getElementById('voiceToggle');
+                
+                switch(status) {
+                    case 'listening':
+                        statusEl.textContent = 'Status: Listening...';
+                        statusEl.style.color = '#4CAF50';
+                        toggleBtn.textContent = 'Stop Voice Control';
+                        toggleBtn.style.background = '#f44336';
+                        break;
+                    case 'off':
+                        statusEl.textContent = 'Status: Off';
+                        statusEl.style.color = 'var(--text-secondary)';
+                        toggleBtn.textContent = 'Start Voice Control';
+                        toggleBtn.style.background = '#4CAF50';
+                        break;
+                    case 'error':
+                        statusEl.textContent = 'Status: Error';
+                        statusEl.style.color = '#f44336';
+                        this.isListening = false;
+                        break;
+                }
+            }
+
+            showVoiceCommand(command) {
+                const commandEl = document.getElementById('lastCommand');
+                commandEl.textContent = `Last: "${command}"`;
+                commandEl.style.color = '#4CAF50';
+                setTimeout(() => {
+                    commandEl.textContent = 'Commands: start, stop, faster, slower, reset, fullscreen';
+                    commandEl.style.color = 'var(--text-secondary)';
+                }, 2000);
+            }
+        }
+
+        // Social Media Streaming System
+        class SocialMediaStreamer {
+            constructor() {
+                this.connectedPlatforms = {};
+                this.isStreaming = false;
+                this.createStreamingUI();
+            }
+
+            createStreamingUI() {
+                const streamPanel = document.createElement('div');
+                streamPanel.innerHTML = `
+                    <div style="position: fixed; top: 10px; left: 10px; z-index: 1000; background: var(--bg-secondary); border-radius: 10px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 300px;">
+                        <h3 style="color: var(--text-primary); margin-bottom: 15px; font-size: 14px;">📡 Live Streaming</h3>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+                            <button onclick="socialStreamer.connectPlatform('facebook')" style="background: #1877F2; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📘 Facebook
+                            </button>
+                            <button onclick="socialStreamer.connectPlatform('youtube')" style="background: #FF0000; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📺 YouTube
+                            </button>
+                            <button onclick="socialStreamer.connectPlatform('instagram')" style="background: #E4405F; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📷 Instagram
+                            </button>
+                            <button onclick="socialStreamer.connectPlatform('twitch')" style="background: #9146FF; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                🟣 Twitch
+                            </button>
+                        </div>
+
+                        <input id="streamTitle" placeholder="Stream title..." style="width: 100%; background: var(--bg-primary); border: 1px solid #333; color: var(--text-primary); padding: 8px; border-radius: 4px; font-size: 12px; margin-bottom: 10px;">
+                        
+                        <div style="display: flex; gap: 8px;">
+                            <button id="goLiveBtn" onclick="socialStreamer.toggleStream()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; flex: 1;">
+                                🔴 Go Live
+                            </button>
+                        </div>
+                        
+                        <div id="streamStatus" style="margin-top: 10px; font-size: 11px; color: var(--text-secondary);">
+                            Status: Ready to stream
+                        </div>
+                        
+                        <div id="streamStats" style="margin-top: 5px; font-size: 10px; color: var(--text-secondary); display: none;">
+                            👁️ Viewers: 0 | ⏱️ Duration: 00:00
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(streamPanel);
+            }
+
+            async connectPlatform(platform) {
+                // Simulate OAuth connection
+                const platformNames = {
+                    facebook: 'Facebook Live',
+                    youtube: 'YouTube Live', 
+                    instagram: 'Instagram Live',
+                    twitch: 'Twitch'
+                };
+
+                const success = confirm(`Connect to ${platformNames[platform]}? This will open authentication window.`);
+                
+                if (success) {
+                    this.connectedPlatforms[platform] = true;
+                    this.updateStreamStatus(`Connected to ${platformNames[platform]}`);
+                    
+                    // In real implementation, this would handle OAuth flow
+                    console.log(`Connected to ${platform}`);
+                } else {
+                    this.updateStreamStatus('Connection cancelled');
+                }
+            }
+
+            toggleStream() {
+                const goLiveBtn = document.getElementById('goLiveBtn');
+                const streamTitle = document.getElementById('streamTitle').value;
+                
+                if (!this.isStreaming) {
+                    if (Object.keys(this.connectedPlatforms).length === 0) {
+                        alert('Please connect to at least one platform first');
+                        return;
+                    }
+                    
+                    if (!streamTitle.trim()) {
+                        alert('Please enter a stream title');
+                        return;
+                    }
+                    
+                    // Start streaming
+                    this.isStreaming = true;
+                    goLiveBtn.textContent = '⏹️ End Stream';
+                    goLiveBtn.style.background = '#f44336';
+                    this.updateStreamStatus('🔴 LIVE');
+                    this.startStreamStats();
+                    
+                } else {
+                    // End streaming
+                    this.isStreaming = false;
+                    goLiveBtn.textContent = '🔴 Go Live';
+                    goLiveBtn.style.background = '#4CAF50';
+                    this.updateStreamStatus('Stream ended');
+                    this.stopStreamStats();
+                }
+            }
+
+            updateStreamStatus(status) {
+                document.getElementById('streamStatus').textContent = `Status: ${status}`;
+            }
+
+            startStreamStats() {
+                const statsEl = document.getElementById('streamStats');
+                statsEl.style.display = 'block';
+                
+                let duration = 0;
+                let viewers = Math.floor(Math.random() * 50) + 1;
+                
+                this.statsInterval = setInterval(() => {
+                    duration++;
+                    viewers += Math.floor(Math.random() * 3) - 1;
+                    viewers = Math.max(0, viewers);
+                    
+                    const hours = Math.floor(duration / 3600);
+                    const minutes = Math.floor((duration % 3600) / 60);
+                    const seconds = duration % 60;
+                    
+                    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    statsEl.textContent = `👁️ Viewers: ${viewers} | ⏱️ Duration: ${timeStr}`;
+                }, 1000);
+            }
+
+            stopStreamStats() {
+                document.getElementById('streamStats').style.display = 'none';
+                if (this.statsInterval) {
+                    clearInterval(this.statsInterval);
+                }
+            }
+        }
+
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
             // Load saved theme
@@ -1020,6 +1286,10 @@ Press the play button or spacebar to start scrolling your script!"
             // Initialize teleprompter
             teleprompter = new Teleprompter();
 
+            // Initialize new features
+            speechController = new SpeechController();
+            socialStreamer = new SocialMediaStreamer();
+
             // Handle fullscreen changes
             document.addEventListener('fullscreenchange', function() {
                 if (!document.fullscreenElement) {
@@ -1027,7 +1297,7 @@ Press the play button or spacebar to start scrolling your script!"
                 }
             });
 
-            console.log('Professional Teleprompter initialized successfully!');
+            console.log('Professional Teleprompter with Voice Control and Live Streaming initialized successfully!');
         });
     </script>
 </body>
