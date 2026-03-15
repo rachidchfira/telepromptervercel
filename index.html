@@ -3,13 +3,85 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Professional Solo Creator Teleprompter - All Features</title>
+<title>Professional Solo Creator Teleprompter</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#000,#1a1a1a);color:#fff;min-height:100vh;padding:1rem}.container{max-width:1400px;margin:0 auto}.header{text-align:center;margin-bottom:2rem}.header h1{color:#00d4ff;font-size:2.5rem}.header p{color:rgba(255,255,255,.7)}#scriptInput{width:100%;min-height:200px;padding:1.5rem;font-size:1.2rem;border-radius:10px;background:rgba(0,0,0,.5);color:#fff;border:2px solid #00d4ff;resize:vertical;margin-bottom:1rem}.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:2rem}.btn{background:linear-gradient(135deg,rgba(0,212,255,.2),rgba(0,153,204,.2));border:2px solid #00d4ff;color:#fff;padding:1rem;border-radius:12px;font-size:.95rem;font-weight:600;cursor:pointer;transition:all .3s}.btn:hover{background:linear-gradient(135deg,#00d4ff,#0099cc);transform:translateY(-2px)}.btn.active{background:linear-gradient(135deg,#00d4ff,#0099cc)}.teleprompter{background:#000;border-radius:15px;padding:4rem;min-height:500px;font-size:3rem;line-height:1.6;overflow-y:auto;border:3px solid #00d4ff;box-shadow:0 0 40px rgba(0,212,255,.3)}#cameraPreview{position:fixed;bottom:20px;right:20px;width:300px;height:225px;border-radius:15px;border:3px solid #00d4ff;display:none;z-index:1000;object-fit:cover}#cameraPreview.active{display:block}.status-badge{display:inline-block;padding:.25rem .75rem;border-radius:20px;font-size:.8rem;margin-left:.5rem}.status-badge.active{background:rgba(0,255,0,.2);color:#0f0}.status-badge.inactive{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:none;justify-content:center;align-items:center;z-index:2000}.modal.active{display:flex}.modal-content{background:rgba(30,30,30,.98);padding:2rem;border-radius:15px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;border:1px solid #00d4ff}.template-card,.stream-card{background:rgba(255,255,255,.05);padding:1rem;margin:.8rem 0;border-radius:8px;border:1px solid rgba(0,212,255,.3);cursor:pointer;transition:all .3s}.template-card:hover,.stream-card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}@media (max-width:768px){.controls{grid-template-columns:1fr}.teleprompter{padding:2rem;font-size:2.5rem}#cameraPreview{width:200px;height:150px}}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#000,#1a1a1a);color:#fff;min-height:100vh;padding:1rem}.container{max-width:1400px;margin:0 auto}.header{text-align:center;margin-bottom:2rem}.header h1{color:#00d4ff;font-size:2.5rem}.header p{color:rgba(255,255,255,.7)}.user-info{position:fixed;top:20px;right:20px;background:rgba(0,0,0,.9);padding:1rem;border-radius:10px;border:2px solid #00d4ff;display:none;z-index:1000}.user-info.active{display:block}.user-info img{width:50px;height:50px;border-radius:50%;margin-right:1rem}#scriptInput{width:100%;min-height:200px;padding:1.5rem;font-size:1.2rem;border-radius:10px;background:rgba(0,0,0,.5);color:#fff;border:2px solid #00d4ff;resize:vertical;margin-bottom:1rem}.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:2rem}.btn{background:linear-gradient(135deg,rgba(0,212,255,.2),rgba(0,153,204,.2));border:2px solid #00d4ff;color:#fff;padding:1rem;border-radius:12px;font-size:.95rem;font-weight:600;cursor:pointer;transition:all .3s}.btn:hover{background:linear-gradient(135deg,#00d4ff,#0099cc);transform:translateY(-2px)}.btn.active{background:linear-gradient(135deg,#00d4ff,#0099cc)}.btn.facebook{background:linear-gradient(135deg,#1877f2,#0d5dbf);border-color:#1877f2}.btn.facebook:hover{background:linear-gradient(135deg,#166fe5,#0c4da1)}.teleprompter{background:#000;border-radius:15px;padding:4rem;min-height:500px;font-size:3rem;line-height:1.6;overflow-y:auto;border:3px solid #00d4ff;box-shadow:0 0 40px rgba(0,212,255,.3)}#cameraPreview{position:fixed;bottom:20px;right:20px;width:300px;height:225px;border-radius:15px;border:3px solid #00d4ff;display:none;z-index:1000;object-fit:cover}#cameraPreview.active{display:block}.status-badge{display:inline-block;padding:.25rem .75rem;border-radius:20px;font-size:.8rem;margin-left:.5rem}.status-badge.active{background:rgba(0,255,0,.2);color:#0f0}.status-badge.inactive{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:none;justify-content:center;align-items:center;z-index:2000}.modal.active{display:flex}.modal-content{background:rgba(30,30,30,.98);padding:2rem;border-radius:15px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;border:1px solid #00d4ff}.template-card,.stream-card{background:rgba(255,255,255,.05);padding:1rem;margin:.8rem 0;border-radius:8px;border:1px solid rgba(0,212,255,.3);cursor:pointer;transition:all .3s}.template-card:hover,.stream-card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}@media (max-width:768px){.controls{grid-template-columns:1fr}.teleprompter{padding:2rem;font-size:2.5rem}#cameraPreview{width:200px;height:150px}}
 </style>
 </head>
 <body>
+
+<!-- Facebook SDK -->
+<script>
+window.fbAsyncInit = function() {
+  FB.init({
+    appId      : 'YOUR_APP_ID', // Replace with your Facebook App ID (or use demo mode)
+    cookie     : true,
+    xfbml      : true,
+    version    : 'v18.0'
+  });
+  FB.AppEvents.logPageView();
+  checkLoginState();
+};
+
+(function(d, s, id){
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) {return;}
+  js = d.createElement(s); js.id = id;
+  js.src = "https://connect.facebook.net/en_US/sdk.js";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));
+
+function checkLoginState() {
+  FB.getLoginStatus(function(response) {
+    if (response.status === 'connected') {
+      getUserInfo();
+    }
+  });
+}
+
+function fbLogin() {
+  FB.login(function(response) {
+    if (response.authResponse) {
+      getUserInfo();
+      alert('✅ Logged in to Facebook!\n\nYou can now use Facebook Live streaming features.');
+    } else {
+      alert('❌ Facebook login cancelled');
+    }
+  }, {scope: 'public_profile,email,publish_video'});
+}
+
+function fbLogout() {
+  FB.logout(function(response) {
+    document.getElementById('userInfo').classList.remove('active');
+    document.getElementById('fbLoginBtn').style.display = 'block';
+    document.getElementById('fbLogoutBtn').style.display = 'none';
+    alert('Logged out from Facebook');
+  });
+}
+
+function getUserInfo() {
+  FB.api('/me', {fields: 'name,email,picture'}, function(response) {
+    document.getElementById('userName').textContent = response.name;
+    document.getElementById('userPic').src = response.picture.data.url;
+    document.getElementById('userInfo').classList.add('active');
+    document.getElementById('fbLoginBtn').style.display = 'none';
+    document.getElementById('fbLogoutBtn').style.display = 'block';
+  });
+}
+</script>
+
 <video id="cameraPreview" autoplay muted playsinline></video>
+
+<!-- User Info Display -->
+<div class="user-info" id="userInfo">
+  <div style="display:flex;align-items:center">
+    <img id="userPic" src="" alt="Profile">
+    <div>
+      <div id="userName" style="font-weight:600"></div>
+      <small style="color:rgba(255,255,255,0.7)">Logged in</small>
+    </div>
+  </div>
+</div>
 
 <!-- Templates Modal -->
 <div class="modal" id="templatesModal">
@@ -27,7 +99,7 @@
 <div class="modal" id="streamModal">
 <div class="modal-content">
 <h2 style="color:#00d4ff;margin-bottom:1.5rem">📡 Live Streaming</h2>
-<div class="stream-card" onclick="streamTo('facebook')"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Stream to Facebook</small></div>
+<div class="stream-card" onclick="streamToFacebook()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Stream to Facebook (Login required)</small></div>
 <div class="stream-card" onclick="streamTo('youtube')"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Stream to YouTube</small></div>
 <div class="stream-card" onclick="streamTo('twitch')"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Stream to Twitch</small></div>
 <div id="streamStatus" style="margin-top:1rem;padding:1rem;background:rgba(0,212,255,.1);border-radius:8px;display:none"></div>
@@ -49,10 +121,12 @@
 <div class="container">
 <div class="header">
 <h1>🎬 Professional Solo Creator Teleprompter</h1>
-<p>Voice • Camera • Recording • Streaming • Templates</p>
+<p>Voice • Camera • Recording • Facebook Live • Templates</p>
 </div>
 <textarea id="scriptInput" placeholder="Type your script or load a template..."></textarea>
 <div class="controls">
+<button class="btn facebook" id="fbLoginBtn" onclick="fbLogin()">📘 Login Facebook</button>
+<button class="btn facebook" id="fbLogoutBtn" onclick="fbLogout()" style="display:none">📘 Logout</button>
 <button class="btn" id="voiceBtn" onclick="toggleVoice()">🎤 Voice<span class="status-badge inactive" id="voiceStatus">OFF</span></button>
 <button class="btn" id="cameraBtn" onclick="toggleCamera()">📹 Camera<span class="status-badge inactive" id="cameraStatus">OFF</span></button>
 <button class="btn" onclick="showModal('templatesModal')">📝 Templates</button>
@@ -68,7 +142,7 @@
 </div>
 
 <script>
-let isPlaying=!1,scrollPos=0,scrollSpeed=1,scrollInt=null;const voice={active:!1,ctx:null,analyser:null,mic:null,threshold:30,delay:500,timeout:null,stream:null};const templates={youtube:"Hey everyone, [YOUR NAME] here!\n\nIn today's video, we're talking about [TOPIC].\n\nIf you're new here, subscribe and hit the bell!\n\nLet's get started!",course:"Welcome to lesson [NUMBER]: [TITLE]\n\nIn this lesson:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\nBy the end, you'll be able to [OBJECTIVE].\n\nLet's dive in!",social:"[HOOK - 3 seconds]\n\n[VALUE - 15 seconds]\n\n[CTA]\n\nFollow for more!",product:"Today I want to show you [PRODUCT].\n\nIf you've struggled with [PROBLEM], this changes everything.\n\nHere's how it works: [DEMO]\n\nGet yours at [LINK]!"};let mediaRecorder=null,recordedChunks=[],recordingStartTime=0,recordingInterval=null;function updateDisplay(){document.getElementById("teleprompterText").textContent=document.getElementById("scriptInput").value||"Your script appears here...",localStorage.setItem("teleprompter-script",document.getElementById("scriptInput").value)}document.getElementById("scriptInput").addEventListener("input",updateDisplay),window.addEventListener("load",()=>{const e=localStorage.getItem("teleprompter-script");e&&(document.getElementById("scriptInput").value=e,updateDisplay())});async function toggleVoice(){voice.active?stopVoice():await startVoice()}async function startVoice(){try{voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0}}),voice.ctx=new(window.AudioContext||window.webkitAudioContext),voice.analyser=voice.ctx.createAnalyser(),voice.mic=voice.ctx.createMediaStreamSource(voice.stream),voice.analyser.smoothingTimeConstant=.8,voice.analyser.fftSize=1024,voice.mic.connect(voice.analyser),voice.active=!0,document.getElementById("voiceStatus").textContent="ON",document.getElementById("voiceStatus").className="status-badge active",document.getElementById("voiceBtn").classList.add("active"),monitorVoice(),alert("🎤 Voice ON!")}catch(e){alert("❌ Mic required")}}function stopVoice(){voice.active=!1,voice.stream&&voice.stream.getTracks().forEach(e=>e.stop()),voice.ctx&&voice.ctx.close(),document.getElementById("voiceStatus").textContent="OFF",document.getElementById("voiceStatus").className="status-badge inactive",document.getElementById("voiceBtn").classList.remove("active"),pauseScript()}function monitorVoice(){if(!voice.active)return;const e=voice.analyser.frequencyBinCount,t=new Uint8Array(e);let a=!1;const i=()=>{if(!voice.active)return;voice.analyser.getByteFrequencyData(t);let o=0;for(let a=0;a<e;a++)o+=t[a];const c=o/e>voice.threshold,s=a;a=c,c&&!s?(clearTimeout(voice.timeout),isPlaying||playScript()):!c&&s&&(clearTimeout(voice.timeout),voice.timeout=setTimeout(()=>{!a&&isPlaying&&pauseScript()},voice.delay)),requestAnimationFrame(i)};i()}let cameraStream=null;async function toggleCamera(){const e=document.getElementById("cameraPreview");if(cameraStream)cameraStream.getTracks().forEach(e=>e.stop()),cameraStream=null,e.classList.remove("active"),document.getElementById("cameraStatus").textContent="OFF",document.getElementById("cameraStatus").className="status-badge inactive",document.getElementById("cameraBtn").classList.remove("active");else try{cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}}),e.srcObject=cameraStream,e.classList.add("active"),document.getElementById("cameraStatus").textContent="ON",document.getElementById("cameraStatus").className="status-badge active",document.getElementById("cameraBtn").classList.add("active")}catch(e){alert("❌ Camera required")}}function showModal(e){document.getElementById(e).classList.add("active")}function closeModal(e){document.getElementById(e).classList.remove("active")}function loadTemplate(e){document.getElementById("scriptInput").value=templates[e],updateDisplay(),closeModal("templatesModal"),alert("✅ Template loaded!")}function streamTo(e){const t=document.getElementById("streamStatus");t.style.display="block",t.innerHTML=`<strong>📡 ${e.toUpperCase()} Live Stream</strong><br><br>Stream Key: DEMO-${Math.random().toString(36).substr(2,9)}<br>Status: <span style="color:#0f0">● Connected</span><br><br><small>This is a demo. Connect real streaming in production.</small>`,alert(`📡 ${e.toUpperCase()} streaming demo activated!\n\nIn production, this would:\n1. Authenticate with ${e}\n2. Get RTMP stream key\n3. Start live broadcast\n\nIntegrate actual ${e} API for real streaming.`)}async function startRecording(){try{const e=await navigator.mediaDevices.getUserMedia({video:!0,audio:!0});recordedChunks=[],mediaRecorder=new MediaRecorder(e),mediaRecorder.ondataavailable=e=>{e.data.size>0&&recordedChunks.push(e.data)},mediaRecorder.onstop=()=>{const e=new Blob(recordedChunks,{type:"video/webm"}),t=URL.createObjectURL(e),a=document.createElement("a");a.href=t,a.download=`recording-${Date.now()}.webm`,a.click(),URL.revokeObjectURL(t),alert("✅ Recording saved!")},mediaRecorder.start(),recordingStartTime=Date.now(),document.getElementById("startRecBtn").style.display="none",document.getElementById("stopRecBtn").style.display="block",recordingInterval=setInterval(()=>{const e=Math.floor((Date.now()-recordingStartTime)/1e3),t=Math.floor(e/60).toString().padStart(2,"0"),a=(e%60).toString().padStart(2,"0");document.getElementById("recTime").textContent=`${t}:${a}`},1e3)}catch(e){alert("❌ Camera/mic required")}}function stopRecording(){mediaRecorder&&"inactive"!==mediaRecorder.state&&(mediaRecorder.stop(),mediaRecorder.stream.getTracks().forEach(e=>e.stop()),clearInterval(recordingInterval),document.getElementById("startRecBtn").style.display="block",document.getElementById("stopRecBtn").style.display="none",document.getElementById("recTime").textContent="00:00")}function playScript(){isPlaying||(isPlaying=!0,scrollInt=setInterval(()=>{scrollPos+=scrollSpeed,document.querySelector(".teleprompter").scrollTop=scrollPos},16))}function pauseScript(){isPlaying&&(isPlaying=!1,clearInterval(scrollInt))}function resetScript(){pauseScript(),scrollPos=0,document.querySelector(".teleprompter").scrollTop=0}function faster(){scrollSpeed=Math.min(5,scrollSpeed+.3),alert(`Speed: ${scrollSpeed.toFixed(1)}x`)}function slower(){scrollSpeed=Math.max(.2,scrollSpeed-.3),alert(`Speed: ${scrollSpeed.toFixed(1)}x`)}console.log("%c🎬 All Features Ready!","color:#00d4ff;font-size:20px");
+let isPlaying=!1,scrollPos=0,scrollSpeed=1,scrollInt=null;const voice={active:!1,ctx:null,analyser:null,mic:null,threshold:30,delay:500,timeout:null,stream:null};const templates={youtube:"Hey everyone, [YOUR NAME] here!\n\nIn today's video, we're talking about [TOPIC].\n\nIf you're new here, subscribe and hit the bell!\n\nLet's get started!",course:"Welcome to lesson [NUMBER]: [TITLE]\n\nIn this lesson:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\nBy the end, you'll be able to [OBJECTIVE].\n\nLet's dive in!",social:"[HOOK - 3 seconds]\n\n[VALUE - 15 seconds]\n\n[CTA]\n\nFollow for more!",product:"Today I want to show you [PRODUCT].\n\nIf you've struggled with [PROBLEM], this changes everything.\n\nHere's how it works: [DEMO]\n\nGet yours at [LINK]!"};let mediaRecorder=null,recordedChunks=[],recordingStartTime=0,recordingInterval=null;function updateDisplay(){document.getElementById("teleprompterText").textContent=document.getElementById("scriptInput").value||"Your script appears here...",localStorage.setItem("teleprompter-script",document.getElementById("scriptInput").value)}document.getElementById("scriptInput").addEventListener("input",updateDisplay),window.addEventListener("load",()=>{const e=localStorage.getItem("teleprompter-script");e&&(document.getElementById("scriptInput").value=e,updateDisplay())});async function toggleVoice(){voice.active?stopVoice():await startVoice()}async function startVoice(){try{voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0}}),voice.ctx=new(window.AudioContext||window.webkitAudioContext),voice.analyser=voice.ctx.createAnalyser(),voice.mic=voice.ctx.createMediaStreamSource(voice.stream),voice.analyser.smoothingTimeConstant=.8,voice.analyser.fftSize=1024,voice.mic.connect(voice.analyser),voice.active=!0,document.getElementById("voiceStatus").textContent="ON",document.getElementById("voiceStatus").className="status-badge active",document.getElementById("voiceBtn").classList.add("active"),monitorVoice(),alert("🎤 Voice ON!")}catch(e){alert("❌ Mic required")}}function stopVoice(){voice.active=!1,voice.stream&&voice.stream.getTracks().forEach(e=>e.stop()),voice.ctx&&voice.ctx.close(),document.getElementById("voiceStatus").textContent="OFF",document.getElementById("voiceStatus").className="status-badge inactive",document.getElementById("voiceBtn").classList.remove("active"),pauseScript()}function monitorVoice(){if(!voice.active)return;const e=voice.analyser.frequencyBinCount,t=new Uint8Array(e);let a=!1;const i=()=>{if(!voice.active)return;voice.analyser.getByteFrequencyData(t);let o=0;for(let a=0;a<e;a++)o+=t[a];const c=o/e>voice.threshold,s=a;a=c,c&&!s?(clearTimeout(voice.timeout),isPlaying||playScript()):!c&&s&&(clearTimeout(voice.timeout),voice.timeout=setTimeout(()=>{!a&&isPlaying&&pauseScript()},voice.delay)),requestAnimationFrame(i)};i()}let cameraStream=null;async function toggleCamera(){const e=document.getElementById("cameraPreview");if(cameraStream)cameraStream.getTracks().forEach(e=>e.stop()),cameraStream=null,e.classList.remove("active"),document.getElementById("cameraStatus").textContent="OFF",document.getElementById("cameraStatus").className="status-badge inactive",document.getElementById("cameraBtn").classList.remove("active");else try{cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}}),e.srcObject=cameraStream,e.classList.add("active"),document.getElementById("cameraStatus").textContent="ON",document.getElementById("cameraStatus").className="status-badge active",document.getElementById("cameraBtn").classList.add("active")}catch(e){alert("❌ Camera required")}}function showModal(e){document.getElementById(e).classList.add("active")}function closeModal(e){document.getElementById(e).classList.remove("active")}function loadTemplate(e){document.getElementById("scriptInput").value=templates[e],updateDisplay(),closeModal("templatesModal"),alert("✅ Template loaded!")}function streamToFacebook(){FB.getLoginStatus(function(e){if("connected"===e.status){const e=document.getElementById("streamStatus");e.style.display="block",e.innerHTML='<strong>📡 FACEBOOK LIVE</strong><br><br>Status: <span style="color:#0f0">● Ready to stream</span><br><br>You are logged in! Click "Go Live" to start streaming.<br><br><button onclick="goLiveFacebook()" class="btn" style="width:100%;margin-top:1rem">🔴 Go Live on Facebook</button>',alert("✅ Facebook connected!\n\nReady to go live!")}else alert("⚠️ Please login to Facebook first\n\nClick the 'Login Facebook' button in the controls.")})}function goLiveFacebook(){alert("🔴 Going Live on Facebook!\n\nIn production, this would:\n1. Create a Facebook Live video\n2. Get RTMP stream URL and key\n3. Start broadcasting\n\nFor real implementation, you need:\n- Facebook App ID\n- publish_video permission\n- RTMP encoder integration")}function streamTo(e){alert(`📡 ${e.toUpperCase()} Streaming\n\nThis is a demo. To enable real streaming:\n1. Get ${e} API credentials\n2. Set up RTMP encoder\n3. Integrate streaming API`)}async function startRecording(){try{const e=await navigator.mediaDevices.getUserMedia({video:!0,audio:!0});recordedChunks=[],mediaRecorder=new MediaRecorder(e),mediaRecorder.ondataavailable=e=>{e.data.size>0&&recordedChunks.push(e.data)},mediaRecorder.onstop=()=>{const e=new Blob(recordedChunks,{type:"video/webm"}),t=URL.createObjectURL(e),a=document.createElement("a");a.href=t,a.download=`recording-${Date.now()}.webm`,a.click(),URL.revokeObjectURL(t),alert("✅ Recording saved!")},mediaRecorder.start(),recordingStartTime=Date.now(),document.getElementById("startRecBtn").style.display="none",document.getElementById("stopRecBtn").style.display="block",recordingInterval=setInterval(()=>{const e=Math.floor((Date.now()-recordingStartTime)/1e3),t=Math.floor(e/60).toString().padStart(2,"0"),a=(e%60).toString().padStart(2,"0");document.getElementById("recTime").textContent=`${t}:${a}`},1e3)}catch(e){alert("❌ Camera/mic required")}}function stopRecording(){mediaRecorder&&"inactive"!==mediaRecorder.state&&(mediaRecorder.stop(),mediaRecorder.stream.getTracks().forEach(e=>e.stop()),clearInterval(recordingInterval),document.getElementById("startRecBtn").style.display="block",document.getElementById("stopRecBtn").style.display="none",document.getElementById("recTime").textContent="00:00")}function playScript(){isPlaying||(isPlaying=!0,scrollInt=setInterval(()=>{scrollPos+=scrollSpeed,document.querySelector(".teleprompter").scrollTop=scrollPos},16))}function pauseScript(){isPlaying&&(isPlaying=!1,clearInterval(scrollInt))}function resetScript(){pauseScript(),scrollPos=0,document.querySelector(".teleprompter").scrollTop=0}function faster(){scrollSpeed=Math.min(5,scrollSpeed+.3),alert(`Speed: ${scrollSpeed.toFixed(1)}x`)}function slower(){scrollSpeed=Math.max(.2,scrollSpeed-.3),alert(`Speed: ${scrollSpeed.toFixed(1)}x`)}console.log("%c🎬 Facebook Login Ready!","color:#00d4ff;font-size:20px");
 </script>
 </body>
 </html>
