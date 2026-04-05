@@ -206,7 +206,7 @@ let readingMode=false, wordSpans=[], scriptWords=[], highlightIdx=-1;
 
 // Voice state
 const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
-let audioLevels=[], lastWordTime=0, voiceSpeaking=false, lastTranscriptWords=[];
+let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
 const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
 
 // ── Elements ──────────────────────────────────────────────────────────────────
@@ -336,7 +336,6 @@ function resetScript(){
   lastWordTime=0;
   voiceSpeaking=false;
   audioLevels=[];
-  lastTranscriptWords=[];
   exitReadingMode();
 }
 
@@ -351,33 +350,27 @@ function fuzzyMatch(a,b){
 }
 
 function matchSpoken(transcript){
-  const spoken=transcript.toLowerCase()
+  const words=transcript.toLowerCase()
     .replace(/[^a-zA-Z0-9\s]/g,'')
     .split(/\s+/)
     .filter(w=>w.length>1);
-  if(!spoken.length) return;
+  if(!words.length) return;
 
-  // SR interim results grow word-by-word. Only process the NEW words added
-  // since last event so we never fire multiple scrollTo calls at once.
-  if(spoken.length < lastTranscriptWords.length) lastTranscriptWords=[]; // SR reset
-  const newWords=spoken.slice(lastTranscriptWords.length);
-  lastTranscriptWords=spoken;
-  if(!newWords.length) return;
-
-  let pos=Math.max(0, highlightIdx);
-  let lastMatch=-1;
-  for(const word of newWords){
-    const limit=Math.min(pos+3, scriptWords.length); // small window — never jump lines
-    for(let i=pos;i<limit;i++){
-      if(fuzzyMatch(scriptWords[i], word)){
-        lastMatch=i; pos=i+1; break;
+  // SR builds up transcripts incrementally: "hello" → "hello world" → "hello world how"
+  // The last word is always the most recently spoken one. Match only that.
+  // Window of 5 lets us skip short words (I, a) and handle slight SR reordering
+  // without jumping across lines.
+  const spoken=words[words.length-1];
+  const pos=Math.max(0, highlightIdx);
+  const limit=Math.min(pos+5, scriptWords.length);
+  for(let i=pos;i<limit;i++){
+    if(fuzzyMatch(scriptWords[i], spoken)){
+      if(i!==highlightIdx){
+        highlightWord(i, true);
+        updateProgress();
       }
+      break;
     }
-  }
-  // Scroll once to the last matched word in this batch
-  if(lastMatch>=0 && lastMatch!==highlightIdx){
-    highlightWord(lastMatch, true);
-    updateProgress();
   }
 }
 
@@ -504,7 +497,7 @@ function stopVoice(){
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; audioLevels=[]; lastTranscriptWords=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; audioLevels=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
