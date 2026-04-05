@@ -35,6 +35,7 @@
     <button class="btn" onclick="faster()">⚡ Faster</button>
     <button class="btn" onclick="slower()">🐢 Slower</button>
   </div>
+  <div id="hearingBox" style="display:none;margin-bottom:.5rem;padding:.6rem 1rem;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.3);border-radius:8px;font-size:.85rem;color:#0f0">🎤 Hearing: <span id="hearingText" style="font-style:italic">...</span></div>
   <div class="teleprompter"><div id="teleprompterText">Your script appears here...</div></div>
 </div>
 
@@ -62,38 +63,59 @@ window.addEventListener("load",()=>{
 function toggleVoice(){voice.active?stopVoice():startVoice();}
 function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){alert("❌ Speech recognition not supported in this browser. Try Chrome.");return;}
-  voice.recognition=new SR();
-  voice.recognition.continuous=!0;
-  voice.recognition.interimResults=!0;
-  voice.recognition.lang='en-US';
-  voice.recognition.onresult=()=>{
-    // actual words detected — scroll
-    clearTimeout(voice.pauseTimeout);
-    if(!isPlaying)playScript();
-    // pause if no new words for 1.5s
-    voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},1500);
-  };
-  voice.recognition.onend=()=>{
-    // auto-restart so it stays on continuously
-    if(voice.active)voice.recognition.start();
-  };
-  voice.recognition.onerror=(e)=>{
-    if(e.error==='not-allowed'){alert("❌ Microphone permission denied.");stopVoice();}
-  };
-  voice.recognition.start();
+  if(!SR){alert("❌ Speech recognition not supported. Please use Chrome or Edge.");return;}
   voice.active=!0;
+  voice.restarting=!1;
   document.getElementById("voiceStatus").textContent="ON";
   document.getElementById("voiceStatus").className="status-badge active";
   document.getElementById("voiceBtn").classList.add("active");
+  document.getElementById("hearingBox").style.display="block";
+  function createAndStart(){
+    if(!voice.active)return;
+    const r=new SR();
+    r.continuous=!0;
+    r.interimResults=!0;
+    r.lang='en-US';
+    r.onresult=(e)=>{
+      // pull transcript from latest result
+      let transcript='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        transcript+=e.results[i][0].transcript;
+      }
+      if(!transcript.trim())return;
+      document.getElementById("hearingText").textContent=transcript.trim();
+      // words detected — scroll
+      clearTimeout(voice.pauseTimeout);
+      if(!isPlaying)playScript();
+      // pause 1.5s after last word
+      voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},1500);
+    };
+    r.onend=()=>{
+      // restart unless stopped intentionally
+      if(voice.active&&!voice.restarting){
+        voice.restarting=!0;
+        setTimeout(()=>{voice.restarting=!1;createAndStart();},200);
+      }
+    };
+    r.onerror=(e)=>{
+      if(e.error==='not-allowed'){alert("❌ Microphone permission denied.");stopVoice();}
+      // ignore 'no-speech' and 'aborted' — onend will restart
+    };
+    voice.recognition=r;
+    r.start();
+  }
+  createAndStart();
 }
 function stopVoice(){
   voice.active=!1;
+  voice.restarting=!1;
   clearTimeout(voice.pauseTimeout);
   if(voice.recognition){voice.recognition.stop();voice.recognition=null;}
   document.getElementById("voiceStatus").textContent="OFF";
   document.getElementById("voiceStatus").className="status-badge inactive";
   document.getElementById("voiceBtn").classList.remove("active");
+  document.getElementById("hearingBox").style.display="none";
+  document.getElementById("hearingText").textContent="...";
   pauseScript();
 }
 
