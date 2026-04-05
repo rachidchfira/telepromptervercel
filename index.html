@@ -161,7 +161,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
   <!-- Script area: textarea (edit) + display div (read) + reading line overlay -->
   <div id="scriptWrap">
-    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Tip: Use [pause] or [smile] for stage directions — they appear dimmed while reading."></textarea>
+    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Comments (dimmed, not read aloud):&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
     <div id="scriptDisplay"></div>
     <div id="readingLine"></div>
   </div>
@@ -251,27 +251,41 @@ function buildDisplay(){
   const text=ta.value;
   scriptWords=[];
   let html='', wordIdx=0;
-  // Tokenize: annotations [..], words, whitespace
-  const regex=/(\[[^\]]*\]|\S+|[ \t]+|\n)/g;
-  let m;
-  while((m=regex.exec(text))!==null){
-    const tok=m[0];
-    if(tok==='\n'){
-      html+='<br>';
-    }else if(/^[ \t]+$/.test(tok)){
-      html+=tok.replace(/ /g,'&nbsp;');
-    }else if(/^\[.*\]$/.test(tok)){
-      html+=`<span class="annotation">${esc(tok)}</span>`;
+
+  // Process line by line so // comments are handled at line level
+  const lines=text.split('\n');
+  lines.forEach((line, li)=>{
+    if(line.trim().startsWith('//')){
+      // Whole line is a comment — show dimmed, never highlight
+      html+=`<span class="annotation">${esc(line)}</span>`;
     }else{
-      const clean=tok.replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
-      html+=`<span class="word" data-i="${wordIdx}">${esc(tok)}</span>`;
-      scriptWords.push(clean);
-      wordIdx++;
+      // Tokenize: [annotations], (parentheticals), words, whitespace
+      const regex=/(\[[^\]]*\]|\([^)]*\)|\S+|[ \t]+)/g;
+      let m;
+      while((m=regex.exec(line))!==null){
+        const tok=m[0];
+        if(/^[ \t]+$/.test(tok)){
+          html+=tok.replace(/ /g,'&nbsp;');
+        }else if(/^\[.*\]$/.test(tok)||/^\(.*\)$/.test(tok)){
+          // [bracket] or (parenthetical) → annotation, not read aloud
+          html+=`<span class="annotation">${esc(tok)}</span>`;
+        }else{
+          const clean=tok.replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
+          if(clean){
+            html+=`<span class="word" data-i="${wordIdx}">${esc(tok)}</span>`;
+            scriptWords.push(clean);
+            wordIdx++;
+          }else{
+            html+=esc(tok); // punctuation-only token, not a word
+          }
+        }
+      }
     }
-  }
+    if(li<lines.length-1) html+='<br>';
+  });
+
   disp.innerHTML=html;
   wordSpans=Array.from(disp.querySelectorAll('.word'));
-  // Apply current display settings
   disp.style.fontSize=fontSize;
   disp.style.color=textColor;
   if(isMirror) disp.classList.add('mirror'); else disp.classList.remove('mirror');
