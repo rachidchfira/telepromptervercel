@@ -356,13 +356,16 @@ function matchSpoken(transcript){
     .split(/\s+/)
     .filter(w=>w.length>1);
   if(!spoken.length) return;
-  const start=Math.max(0, highlightIdx);
+  let pos=Math.max(0, highlightIdx);
   for(const word of spoken){
-    const limit=Math.min(start+40, scriptWords.length);
-    for(let i=start;i<limit;i++){
+    const limit=Math.min(pos+40, scriptWords.length);
+    for(let i=pos;i<limit;i++){
       if(fuzzyMatch(scriptWords[i], word)){
-        highlightWord(i, true);
-        updateProgress();
+        if(i!==highlightIdx){
+          highlightWord(i, true);
+          updateProgress();
+        }
+        pos=i+1; // always advance past matched word
         break;
       }
     }
