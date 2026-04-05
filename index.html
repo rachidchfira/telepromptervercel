@@ -206,7 +206,7 @@ let readingMode=false, wordSpans=[], scriptWords=[], highlightIdx=-1;
 
 // Voice state
 const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
-let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
+let audioLevels=[], lastWordTime=0, voiceSpeaking=false, lastTranscriptWords=[];
 const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
 
 // ── Elements ──────────────────────────────────────────────────────────────────
@@ -336,6 +336,7 @@ function resetScript(){
   lastWordTime=0;
   voiceSpeaking=false;
   audioLevels=[];
+  lastTranscriptWords=[];
   exitReadingMode();
 }
 
@@ -355,19 +356,28 @@ function matchSpoken(transcript){
     .split(/\s+/)
     .filter(w=>w.length>1);
   if(!spoken.length) return;
+
+  // SR interim results grow word-by-word. Only process the NEW words added
+  // since last event so we never fire multiple scrollTo calls at once.
+  if(spoken.length < lastTranscriptWords.length) lastTranscriptWords=[]; // SR reset
+  const newWords=spoken.slice(lastTranscriptWords.length);
+  lastTranscriptWords=spoken;
+  if(!newWords.length) return;
+
   let pos=Math.max(0, highlightIdx);
-  for(const word of spoken){
-    const limit=Math.min(pos+40, scriptWords.length);
+  let lastMatch=-1;
+  for(const word of newWords){
+    const limit=Math.min(pos+20, scriptWords.length);
     for(let i=pos;i<limit;i++){
       if(fuzzyMatch(scriptWords[i], word)){
-        if(i!==highlightIdx){
-          highlightWord(i, true); // scroll to spoken word (voice has no auto-scroll)
-          updateProgress();
-        }
-        pos=i+1; // advance past matched word
-        break;
+        lastMatch=i; pos=i+1; break;
       }
     }
+  }
+  // Scroll once to the last matched word in this batch
+  if(lastMatch>=0 && lastMatch!==highlightIdx){
+    highlightWord(lastMatch, true);
+    updateProgress();
   }
 }
 
@@ -494,7 +504,7 @@ function stopVoice(){
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; audioLevels=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; audioLevels=[]; lastTranscriptWords=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
