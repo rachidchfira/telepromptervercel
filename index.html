@@ -41,8 +41,7 @@
 
 <script>
 let isPlaying=!1,scrollPos=0,scrollSpeed=2,scrollInt=null;
-const voice={active:!1,recognition:null,restarting:!1};
-let scriptWordMap=[],currentWordIndex=0;
+const voice={active:!1,stream:null,ctx:null,analyser:null,pauseTimer:null,startTimer:null};
 const templates={
   youtube:"Hey [YOUR NAME]!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\nLet's dive in...",
   course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[MAIN CONTENT]\n\nSee you in the next lesson!",
@@ -61,81 +60,63 @@ window.addEventListener("load",()=>{
   buildWordMap();
 });
 
-function buildWordMap(){
-  const text=document.getElementById("scriptInput").value;
-  const words=text.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').split(/\s+/).filter(w=>w.length>2);
-  scriptWordMap=new Set(words);
-}
-
-function matchAndScroll(transcript){
-  if(!scriptWordMap.size){buildWordMap();}
-  if(!scriptWordMap.size)return;
-  const spoken=transcript.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').split(/\s+/).filter(w=>w.length>2);
-  const hasMatch=spoken.some(w=>scriptWordMap.has(w));
-  if(hasMatch){
-    clearTimeout(voice.pauseTimeout);
-    if(!isPlaying)playScript();
-    voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},300);
-  }
-  return hasMatch;
-}
-
 function toggleVoice(){voice.active?stopVoice():startVoice();}
-function startVoice(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){alert("❌ Speech recognition not supported. Please use Chrome or Edge.");return;}
-  voice.active=!0;
-  voice.restarting=!1;
-  currentWordIndex=0;
-  buildWordMap();
-  document.getElementById("voiceStatus").textContent="ON";
-  document.getElementById("voiceStatus").className="status-badge active";
-  document.getElementById("voiceBtn").classList.add("active");
-  document.getElementById("hearingBox").style.display="block";
-  document.getElementById("hearingText").textContent=`ready — ${scriptWordMap.size} words in script`;
-  function createAndStart(){
-    if(!voice.active)return;
-    const r=new SR();
-    r.continuous=!0;
-    r.interimResults=!0;
-    r.lang='en-US';
-    r.onresult=(e)=>{
-      let interim='',final='';
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        if(e.results[i].isFinal)final+=e.results[i][0].transcript;
-        else interim+=e.results[i][0].transcript;
+async function startVoice(){
+  try{
+    voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0,autoGainControl:!0}});
+    voice.ctx=new(window.AudioContext||window.webkitAudioContext)();
+    voice.analyser=voice.ctx.createAnalyser();
+    voice.analyser.fftSize=1024;
+    voice.analyser.smoothingTimeConstant=0.6;
+    const mic=voice.ctx.createMediaStreamSource(voice.stream);
+    mic.connect(voice.analyser);
+    voice.active=!0;
+    document.getElementById("voiceStatus").textContent="ON";
+    document.getElementById("voiceStatus").className="status-badge active";
+    document.getElementById("voiceBtn").classList.add("active");
+    document.getElementById("hearingBox").style.display="block";
+    // calculate speech frequency bins (300Hz–3000Hz)
+    const binHz=voice.ctx.sampleRate/voice.analyser.fftSize;
+    const lowBin=Math.floor(300/binHz);
+    const highBin=Math.floor(3000/binHz);
+    const data=new Uint8Array(voice.analyser.frequencyBinCount);
+    let isSpeaking=!1;
+    function monitor(){
+      if(!voice.active)return;
+      voice.analyser.getByteFrequencyData(data);
+      // average energy only in speech frequency range
+      let sum=0;
+      for(let i=lowBin;i<=highBin;i++)sum+=data[i];
+      const level=Math.round(sum/(highBin-lowBin));
+      const speaking=level>18;
+      document.getElementById("hearingText").textContent=`level: ${level} ${speaking?'🟢 speaking':'⚫ silent'}`;
+      if(speaking&&!isSpeaking){
+        isSpeaking=!0;
+        clearTimeout(voice.pauseTimer);
+        clearTimeout(voice.startTimer);
+        voice.startTimer=setTimeout(()=>{if(isSpeaking&&!isPlaying)playScript();},120);
+      }else if(!speaking&&isSpeaking){
+        isSpeaking=!1;
+        clearTimeout(voice.startTimer);
+        clearTimeout(voice.pauseTimer);
+        voice.pauseTimer=setTimeout(()=>{if(!isSpeaking&&isPlaying)pauseScript();},350);
       }
-      const heard=(final||interim).trim();
-      if(!heard)return;
-      const matched=matchAndScroll(heard);
-      document.getElementById("hearingText").textContent=heard+(matched?' ✓':'  ✗ not in script');
-    };
-    r.onend=()=>{
-      // restart unless stopped intentionally
-      if(voice.active&&!voice.restarting){
-        voice.restarting=!0;
-        setTimeout(()=>{voice.restarting=!1;createAndStart();},200);
-      }
-    };
-    r.onerror=(e)=>{
-      if(e.error==='not-allowed'){alert("❌ Microphone permission denied.");stopVoice();}
-      // ignore 'no-speech' and 'aborted' — onend will restart
-    };
-    voice.recognition=r;
-    r.start();
-  }
-  createAndStart();
+      requestAnimationFrame(monitor);
+    }
+    monitor();
+  }catch(e){alert("❌ Microphone access required");}
 }
 function stopVoice(){
   voice.active=!1;
-  voice.restarting=!1;
-  clearTimeout(voice.pauseTimeout);
-  if(voice.recognition){voice.recognition.stop();voice.recognition=null;}
+  clearTimeout(voice.pauseTimer);
+  clearTimeout(voice.startTimer);
+  if(voice.stream)voice.stream.getTracks().forEach(t=>t.stop());
+  if(voice.ctx)voice.ctx.close();
+  voice.stream=null;voice.ctx=null;voice.analyser=null;
   document.getElementById("voiceStatus").textContent="OFF";
   document.getElementById("voiceStatus").className="status-badge inactive";
   document.getElementById("voiceBtn").classList.remove("active");
   document.getElementById("hearingBox").style.display="none";
-  document.getElementById("hearingText").textContent="...";
   pauseScript();
 }
 
