@@ -14,7 +14,7 @@
 
 <div class="modal" id="streamModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">📡 Go Live</h2><div class="stream-card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Opens Facebook's Go Live page — make sure you're logged into Facebook in your browser</small></div><div class="stream-card" onclick="openYouTubeLive()"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Opens YouTube Studio livestreaming</small></div><div class="stream-card" onclick="openTwitchLive()"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Opens Twitch Creator Dashboard</small></div><p style="margin-top:1.5rem;padding:1rem;background:rgba(0,212,255,.1);border-radius:8px;font-size:.9rem">💡 Keep this teleprompter window open while you stream in the other window!</p><button onclick="closeModal('streamModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
 
-<div class="modal" id="speedModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">⚡ Scroll Speed</h2><div id="speedOptions"></div><button onclick="closeModal('speedModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
+<div class="modal" id="speedModal"><div class="modal-content" style="max-width:320px;padding:1.5rem"><h3 style="color:#00d4ff;margin-bottom:1rem;text-align:center">⚡ Scroll Speed</h3><div id="speedOptions" style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center"></div></div></div>
 
 <div class="modal" id="recordModal"><div class="modal-content" style="text-align:center"><h2 style="color:#00d4ff;margin-bottom:1.5rem">⏺️ Recording</h2><div id="recTime" style="font-size:3rem;color:#ff4757;margin:2rem 0;font-family:monospace">00:00</div><button onclick="startRecording()" id="startRecBtn" class="btn" style="width:100%;margin:.5rem 0">⏺️ Start</button><button onclick="stopRecording()" id="stopRecBtn" class="btn" style="width:100%;margin:.5rem 0;display:none">⏹️ Stop</button><button onclick="closeModal('recordModal')" class="btn" style="width:100%;margin:.5rem 0">Close</button></div></div>
 
@@ -192,10 +192,9 @@ const speeds=[
 function showSpeedModal(){
   const container=document.getElementById('speedOptions');
   container.innerHTML=speeds.map(s=>`
-    <div class="stream-card" onclick="setSpeed(${s.value})" style="${scrollSpeed===s.value?'background:rgba(0,212,255,.25);border-color:#00d4ff;':''}">
-      <strong style="color:#00d4ff">${s.label}</strong>
-      <span style="float:right;color:rgba(255,255,255,.5)">${s.value}x${scrollSpeed===s.value?' ✓':''}</span>
-    </div>`).join('');
+    <button onclick="setSpeed(${s.value})" style="padding:.5rem 1rem;border-radius:8px;border:2px solid ${scrollSpeed===s.value?'#00d4ff':'rgba(255,255,255,.2)'};background:${scrollSpeed===s.value?'rgba(0,212,255,.25)':'rgba(255,255,255,.05)'};color:#fff;cursor:pointer;font-size:.85rem;font-weight:600">
+      ${s.label}
+    </button>`).join('');
   showModal('speedModal');
 }
 function setSpeed(v){
