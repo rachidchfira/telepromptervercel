@@ -88,7 +88,7 @@ function startVoice(){
       clearTimeout(voice.pauseTimeout);
       if(!isPlaying)playScript();
       // pause 1.5s after last word
-      voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},300);
+      voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},100);
     };
     r.onend=()=>{
       // restart unless stopped intentionally
