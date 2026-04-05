@@ -4,215 +4,235 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Professional Solo Creator Teleprompter</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#000,#1a1a1a);color:#fff;min-height:100vh;padding:1rem}.container{max-width:1400px;margin:0 auto}.header{text-align:center;margin-bottom:2rem}.header h1{color:#00d4ff;font-size:2.5rem}.header p{color:rgba(255,255,255,.7)}#scriptInput{width:100%;height:60vh;padding:3rem 4rem;font-size:3rem;line-height:1.6;border-radius:15px;background:#000;color:#fff;border:3px solid #00d4ff;resize:none;margin-bottom:1rem;overflow-y:auto;font-family:inherit}.controls{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem}.btn{background:linear-gradient(135deg,rgba(0,212,255,.2),rgba(0,153,204,.2));border:1px solid #00d4ff;color:#fff;padding:.35rem .7rem;border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .3s;white-space:nowrap}.btn:hover{background:linear-gradient(135deg,#00d4ff,#0099cc)}.btn.active{background:linear-gradient(135deg,#00d4ff,#0099cc)}.btn.facebook{background:linear-gradient(135deg,#1877f2,#0d5dbf);border-color:#1877f2}#cameraPreview{position:fixed;top:20px;right:20px;width:200px;height:150px;border-radius:12px;border:2px solid #00d4ff;display:none;z-index:1000}#cameraPreview.active{display:block}.status-badge{display:inline-block;padding:.25rem .75rem;border-radius:20px;font-size:.8rem;margin-left:.5rem}.status-badge.active{background:rgba(0,255,0,.2);color:#0f0}.status-badge.inactive{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:none;justify-content:center;align-items:center;z-index:2000}.modal.active{display:flex}.modal-content{background:rgba(30,30,30,.98);padding:2rem;border-radius:15px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;border:1px solid #00d4ff}.template-card,.stream-card{background:rgba(255,255,255,.05);padding:1rem;margin:.8rem 0;border-radius:8px;border:1px solid rgba(0,212,255,.3);cursor:pointer;transition:all .3s}.template-card:hover,.stream-card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}@media (max-width:768px){.controls{grid-template-columns:1fr}.teleprompter{padding:2rem;font-size:2.5rem}#cameraPreview{width:200px;height:150px}}</style>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#000,#1a1a1a);color:#fff;min-height:100vh;padding:1rem}
+.container{max-width:1400px;margin:0 auto}
+.header{text-align:center;margin-bottom:1rem}
+.header h1{color:#00d4ff;font-size:2rem}
+.header p{color:rgba(255,255,255,.6);font-size:.85rem}
+#scriptInput{
+  width:100%;height:60vh;padding:3rem 4rem;
+  font-size:3rem;line-height:1.7;border-radius:15px;
+  background:#000;color:#fff;border:3px solid #00d4ff;
+  resize:none;overflow-y:auto;font-family:inherit;
+  transition:color .3s,transform .3s;
+}
+#scriptInput.mirror{transform:scaleX(-1)}
+#scriptInput::placeholder{color:rgba(255,255,255,.2)}
+/* annotation styling: [text in brackets] shown dim */
+#scriptInput{white-space:pre-wrap}
+.controls{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0}
+.btn{
+  background:rgba(0,212,255,.12);border:1px solid #00d4ff;
+  color:#fff;padding:.3rem .65rem;border-radius:7px;
+  font-size:.72rem;font-weight:600;cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.btn:hover{background:rgba(0,212,255,.35)}
+.btn.active{background:linear-gradient(135deg,#00d4ff,#0099cc);border-color:#00d4ff}
+.btn.facebook{background:linear-gradient(135deg,#1877f2,#0d5dbf);border-color:#1877f2}
+.btn.danger{background:rgba(255,70,70,.15);border-color:#ff4646}
+.btn.danger.active{background:linear-gradient(135deg,#ff4646,#cc0000);border-color:#ff4646}
+.sep{width:1px;background:rgba(255,255,255,.15);margin:0 .2rem;align-self:stretch}
+#cameraPreview{position:fixed;top:20px;right:20px;width:200px;height:150px;border-radius:12px;border:2px solid #00d4ff;display:none;z-index:1000}
+#cameraPreview.active{display:block}
+.status-badge{display:inline-block;padding:.15rem .5rem;border-radius:12px;font-size:.7rem;margin-left:.3rem}
+.status-badge.active{background:rgba(0,255,0,.2);color:#0f0}
+.status-badge.inactive{background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
+/* modals */
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);display:none;justify-content:center;align-items:center;z-index:2000}
+.modal.active{display:flex}
+.modal-content{background:#111;padding:1.5rem;border-radius:14px;max-width:680px;width:92%;max-height:80vh;overflow-y:auto;border:1px solid #00d4ff}
+.card{background:rgba(255,255,255,.05);padding:.9rem;margin:.6rem 0;border-radius:8px;border:1px solid rgba(0,212,255,.25);cursor:pointer;transition:all .2s}
+.card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}
+/* voice indicator */
+#voiceBar{display:none;margin:.4rem 0;padding:.5rem 1rem;background:rgba(0,255,0,.07);border:1px solid rgba(0,255,0,.25);border-radius:8px;font-size:.8rem;color:#0f0;align-items:center;gap:.8rem}
+#voiceBar.active{display:flex}
+#levelBar{height:6px;border-radius:3px;background:#0f0;transition:width .05s;min-width:2px}
+#levelWrap{flex:1;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;height:6px}
+/* color swatches */
+.swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .2s;display:inline-block}
+.swatch.selected{border-color:#fff;transform:scale(1.2)}
+</style>
 </head>
 <body>
 
 <video id="cameraPreview" autoplay muted playsinline></video>
 
-<div class="modal" id="templatesModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">📝 Templates</h2><div class="template-card" onclick="loadTemplate('youtube')"><strong style="color:#00d4ff">📺 YouTube</strong><br><small>Intro hook</small></div><div class="template-card" onclick="loadTemplate('course')"><strong style="color:#00d4ff">🎓 Course</strong><br><small>Educational</small></div><div class="template-card" onclick="loadTemplate('social')"><strong style="color:#00d4ff">📱 Social</strong><br><small>TikTok / Reels</small></div><div class="template-card" onclick="loadTemplate('product')"><strong style="color:#00d4ff">🛍️ Product</strong><br><small>Demo / Pitch</small></div><button onclick="closeModal('templatesModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
+<!-- MODALS -->
+<div class="modal" id="templatesModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">📝 Templates</h2>
+  <div class="card" onclick="loadTemplate('youtube')"><strong style="color:#00d4ff">📺 YouTube Intro</strong><br><small>Hook, topic, subscribe CTA</small></div>
+  <div class="card" onclick="loadTemplate('course')"><strong style="color:#00d4ff">🎓 Course Lesson</strong><br><small>Educational format with points</small></div>
+  <div class="card" onclick="loadTemplate('social')"><strong style="color:#00d4ff">📱 Social / Reels</strong><br><small>Hook → Value → CTA</small></div>
+  <div class="card" onclick="loadTemplate('product')"><strong style="color:#00d4ff">🛍️ Product Demo</strong><br><small>Problem → Solution → Link</small></div>
+  <button onclick="closeModal('templatesModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
+</div></div>
 
-<div class="modal" id="streamModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">📡 Go Live</h2><div class="stream-card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Opens Facebook's Go Live page — make sure you're logged into Facebook in your browser</small></div><div class="stream-card" onclick="openYouTubeLive()"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Opens YouTube Studio livestreaming</small></div><div class="stream-card" onclick="openTwitchLive()"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Opens Twitch Creator Dashboard</small></div><p style="margin-top:1.5rem;padding:1rem;background:rgba(0,212,255,.1);border-radius:8px;font-size:.9rem">💡 Keep this teleprompter window open while you stream in the other window!</p><button onclick="closeModal('streamModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
+<div class="modal" id="streamModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">📡 Go Live</h2>
+  <div class="card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Opens facebook.com/live/create — log in to Facebook first</small></div>
+  <div class="card" onclick="openYouTubeLive()"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Opens YouTube Studio livestreaming</small></div>
+  <div class="card" onclick="openTwitchLive()"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Opens Twitch Creator Dashboard</small></div>
+  <p style="margin-top:1rem;padding:.8rem;background:rgba(0,212,255,.08);border-radius:8px;font-size:.85rem">💡 Keep this teleprompter window open while you stream in the other window!</p>
+  <button onclick="closeModal('streamModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
+</div></div>
 
-<div class="modal" id="speedModal"><div class="modal-content" style="max-width:320px;padding:1.5rem"><h3 style="color:#00d4ff;margin-bottom:1rem;text-align:center">⚡ Scroll Speed</h3><div id="speedOptions" style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center"></div></div></div>
+<div class="modal" id="speedModal"><div class="modal-content" style="max-width:300px;padding:1.2rem">
+  <h3 style="color:#00d4ff;margin-bottom:1rem;text-align:center">⚡ Scroll Speed</h3>
+  <div id="speedOptions" style="display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center"></div>
+</div></div>
 
-<div class="modal" id="recordModal"><div class="modal-content" style="text-align:center"><h2 style="color:#00d4ff;margin-bottom:1.5rem">⏺️ Recording</h2><div id="recTime" style="font-size:3rem;color:#ff4757;margin:2rem 0;font-family:monospace">00:00</div><button onclick="startRecording()" id="startRecBtn" class="btn" style="width:100%;margin:.5rem 0">⏺️ Start</button><button onclick="stopRecording()" id="stopRecBtn" class="btn" style="width:100%;margin:.5rem 0;display:none">⏹️ Stop</button><button onclick="closeModal('recordModal')" class="btn" style="width:100%;margin:.5rem 0">Close</button></div></div>
+<div class="modal" id="recordModal"><div class="modal-content" style="text-align:center">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">⏺️ Recording</h2>
+  <div id="recTime" style="font-size:3rem;color:#ff4757;margin:1.5rem 0;font-family:monospace">00:00</div>
+  <button onclick="startRecording()" id="startRecBtn" class="btn" style="width:100%;margin:.4rem 0">⏺️ Start Recording</button>
+  <button onclick="stopRecording()" id="stopRecBtn" class="btn danger" style="width:100%;margin:.4rem 0;display:none">⏹️ Stop & Save</button>
+  <button onclick="closeModal('recordModal')" class="btn" style="width:100%;margin:.4rem 0">Close</button>
+</div></div>
 
+<div class="modal" id="settingsModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1.2rem">⚙️ Display Settings</h2>
+
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.6);font-size:.8rem;margin-bottom:.5rem">FONT SIZE</p>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn" onclick="setFontSize('2rem')" id="fs-sm">Small</button>
+      <button class="btn" onclick="setFontSize('2.5rem')" id="fs-md">Medium</button>
+      <button class="btn active" onclick="setFontSize('3rem')" id="fs-lg">Large</button>
+      <button class="btn" onclick="setFontSize('4rem')" id="fs-xl">XL</button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.6);font-size:.8rem;margin-bottom:.5rem">TEXT COLOR</p>
+    <div style="display:flex;gap:.7rem;align-items:center">
+      <span class="swatch selected" style="background:#ffffff" onclick="setColor('#ffffff',this)" title="White"></span>
+      <span class="swatch" style="background:#FFD60A" onclick="setColor('#FFD60A',this)" title="Yellow"></span>
+      <span class="swatch" style="background:#33D64A" onclick="setColor('#33D64A',this)" title="Green"></span>
+      <span class="swatch" style="background:#4F8CFF" onclick="setColor('#4F8CFF',this)" title="Blue"></span>
+      <span class="swatch" style="background:#FF6191" onclick="setColor('#FF6191',this)" title="Pink"></span>
+      <span class="swatch" style="background:#FF9E0A" onclick="setColor('#FF9E0A',this)" title="Orange"></span>
+    </div>
+  </div>
+
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.6);font-size:.8rem;margin-bottom:.5rem">DISPLAY</p>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn" id="mirrorBtn" onclick="toggleMirror()">🪞 Mirror Mode</button>
+    </div>
+  </div>
+
+  <button onclick="closeModal('settingsModal')" class="btn" style="margin-top:.5rem;width:100%">Close</button>
+</div></div>
+
+<!-- MAIN UI -->
 <div class="container">
   <div class="header">
-    <h1>🎬 Professional Solo Creator Teleprompter</h1>
-    <p>Voice • Camera • Recording • Streaming • Templates</p>
+    <h1>🎬 Professional Teleprompter</h1>
+    <p>Voice • Camera • Recording • Live Streaming</p>
   </div>
-  <textarea id="scriptInput" placeholder="Type your script here..."></textarea>
+
+  <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Tip: Use [pause] or [smile] for stage directions — they'll appear dimmed."></textarea>
+
+  <!-- Voice level indicator -->
+  <div id="voiceBar">
+    <span id="voiceLabel">⚫ silent</span>
+    <div id="levelWrap"><div id="levelBar" style="width:0%"></div></div>
+    <span id="voiceHint" style="font-size:.7rem;color:rgba(0,255,0,.6)"></span>
+  </div>
+
+  <!-- Controls -->
   <div class="controls">
-    <button class="btn facebook" onclick="openFacebookLive()">📘 Facebook Live</button>
-    <button class="btn" id="voiceBtn" onclick="toggleVoice()">🎤 Voice<span class="status-badge inactive" id="voiceStatus">OFF</span></button>
-    <button class="btn" id="cameraBtn" onclick="toggleCamera()">📹 Camera<span class="status-badge inactive" id="cameraStatus">OFF</span></button>
-    <button class="btn" onclick="showModal('templatesModal')">📝 Templates</button>
-    <button class="btn" onclick="showModal('recordModal')">⏺️ Record</button>
+    <!-- Live -->
+    <button class="btn facebook" onclick="openFacebookLive()">📘 FB Live</button>
     <button class="btn" onclick="showModal('streamModal')">📡 Go Live</button>
+    <div class="sep"></div>
+    <!-- Voice -->
+    <button class="btn" id="voiceBtn" onclick="toggleVoice()">🎤 Voice<span class="status-badge inactive" id="voiceStatus">OFF</span></button>
+    <!-- Playback -->
     <button class="btn" onclick="playScript()">▶️ Play</button>
     <button class="btn" onclick="pauseScript()">⏸️ Pause</button>
     <button class="btn" onclick="resetScript()">🔄 Reset</button>
-    <button class="btn" id="speedBtn" onclick="showSpeedModal()">⚡ Speed <span id="speedLabel">2x</span></button>
+    <button class="btn" id="speedBtn" onclick="showSpeedModal()">⚡ <span id="speedLabel">Normal</span></button>
+    <div class="sep"></div>
+    <!-- Camera & Record -->
+    <button class="btn" id="cameraBtn" onclick="toggleCamera()">📹 Camera<span class="status-badge inactive" id="cameraStatus">OFF</span></button>
+    <button class="btn" onclick="showModal('recordModal')">⏺️ Record</button>
+    <div class="sep"></div>
+    <!-- Settings & Templates -->
+    <button class="btn" onclick="showModal('settingsModal')">⚙️ Settings</button>
+    <button class="btn" onclick="showModal('templatesModal')">📝 Templates</button>
   </div>
-  <div id="hearingBox" style="display:none;margin-bottom:.5rem;padding:.6rem 1rem;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.3);border-radius:8px;font-size:.85rem;color:#0f0">🎤 Hearing: <span id="hearingText" style="font-style:italic">...</span></div>
 </div>
 
 <script>
-let isPlaying=!1,scrollPos=0,scrollSpeed=2,scrollInt=null;
-const voice={active:!1,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
-let lastWordTime=0,voiceSpeaking=!1;
-const templates={
-  youtube:"Hey [YOUR NAME]!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\nLet's dive in...",
-  course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[MAIN CONTENT]\n\nSee you in the next lesson!",
-  social:"[HOOK - grab attention in first 3 seconds]\n\n[VALUE - the thing they came for]\n\n[CTA - follow for more / comment below]",
-  product:"Introducing [PRODUCT NAME].\n\nThe problem it solves: [PROBLEM]\n\nHow it works: [EXPLANATION]\n\nGet started at [LINK]"
-};
-let mediaRecorder=null,recordedChunks=[],recordingStartTime=0,recordingInterval=null;
-
-document.getElementById("scriptInput").addEventListener("input",()=>{
-  localStorage.setItem("teleprompter-script",document.getElementById("scriptInput").value);
-});
-window.addEventListener("load",()=>{
-  const saved=localStorage.getItem("teleprompter-script");
-  if(saved)document.getElementById("scriptInput").value=saved;
-});
-
-function toggleVoice(){voice.active?stopVoice():startVoice();}
-async function startVoice(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){alert("❌ Please use Chrome or Edge.");return;}
-  try{
-    voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0,autoGainControl:!0}});
-    voice.ctx=new(window.AudioContext||window.webkitAudioContext)();
-    voice.analyser=voice.ctx.createAnalyser();
-    voice.analyser.fftSize=1024;
-    voice.analyser.smoothingTimeConstant=0.5;
-    voice.ctx.createMediaStreamSource(voice.stream).connect(voice.analyser);
-    const binHz=voice.ctx.sampleRate/voice.analyser.fftSize;
-    const lo=Math.floor(300/binHz),hi=Math.floor(3000/binHz);
-    const data=new Uint8Array(voice.analyser.frequencyBinCount);
-
-    // SR only updates lastWordTime — never calls play/pause itself
-    voice.recognition=new SR();
-    voice.recognition.continuous=!0;
-    voice.recognition.interimResults=!0;
-    voice.recognition.lang='en-US';
-    voice.recognition.onresult=(e)=>{
-      let t='';
-      for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;
-      if(t.trim())lastWordTime=Date.now();
-    };
-    voice.recognition.onend=()=>{if(voice.active)voice.recognition.start();};
-    voice.recognition.onerror=(e)=>{if(e.error==='not-allowed'){alert("❌ Mic denied");stopVoice();}};
-    voice.recognition.start();
-
-    voice.active=!0;
-    voiceSpeaking=!1;
-    lastWordTime=0;
-    document.getElementById("voiceStatus").textContent="ON";
-    document.getElementById("voiceStatus").className="status-badge active";
-    document.getElementById("voiceBtn").classList.add("active");
-    document.getElementById("hearingBox").style.display="block";
-
-    // AudioContext is the SOLE controller of start and stop
-    // Only scrolls when: audio level high AND SR detected words recently (guards against aaaa/noise)
-    function monitor(){
-      if(!voice.active)return;
-      voice.analyser.getByteFrequencyData(data);
-      let sum=0;for(let i=lo;i<=hi;i++)sum+=data[i];
-      const level=Math.round(sum/(hi-lo));
-      const recentWords=(Date.now()-lastWordTime)<2000;
-      const speaking=level>15&&recentWords;
-
-      document.getElementById("hearingText").textContent=
-        `${speaking?'🟢 reading':'⚫ silent'} (level:${level}${!recentWords&&level>15?' — say a word first':''})`;
-
-      if(speaking&&!voiceSpeaking){
-        voiceSpeaking=!0;
-        clearTimeout(voice.pauseTimer);
-        if(!isPlaying)playScript();
-      }else if(!speaking&&voiceSpeaking){
-        voiceSpeaking=!1;
-        clearTimeout(voice.pauseTimer);
-        voice.pauseTimer=setTimeout(()=>{if(isPlaying)pauseScript();},150);
-      }
-      requestAnimationFrame(monitor);
-    }
-    monitor();
-  }catch(e){alert("❌ Microphone access required.");}
-}
-function stopVoice(){
-  voice.active=!1;
-  voiceSpeaking=!1;
-  clearTimeout(voice.pauseTimer);
-  if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
-  if(voice.stream)voice.stream.getTracks().forEach(t=>t.stop());
-  if(voice.ctx)voice.ctx.close();
-  voice.stream=null;voice.ctx=null;voice.analyser=null;
-  document.getElementById("voiceStatus").textContent="OFF";
-  document.getElementById("voiceStatus").className="status-badge inactive";
-  document.getElementById("voiceBtn").classList.remove("active");
-  document.getElementById("hearingBox").style.display="none";
-  pauseScript();
-}
-
+// ─── State ────────────────────────────────────────────────────────────────────
+let isPlaying=false, scrollPos=0, scrollSpeed=2, scrollInt=null;
+let mediaRecorder=null, recordedChunks=[], recordingStartTime=0, recordingInterval=null;
 let cameraStream=null;
-async function toggleCamera(){
-  const el=document.getElementById("cameraPreview");
-  if(cameraStream){
-    cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null;
-    el.classList.remove("active");
-    document.getElementById("cameraStatus").textContent="OFF";
-    document.getElementById("cameraStatus").className="status-badge inactive";
-    document.getElementById("cameraBtn").classList.remove("active");
-  }else{
-    try{
-      cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});
-      el.srcObject=cameraStream;el.classList.add("active");
-      document.getElementById("cameraStatus").textContent="ON";
-      document.getElementById("cameraStatus").className="status-badge active";
-      document.getElementById("cameraBtn").classList.add("active");
-    }catch(e){alert("❌ Camera access required");}
-  }
+let isMirror=false;
+
+// ─── Voice state ──────────────────────────────────────────────────────────────
+const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
+let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
+const RMS_THRESHOLD=0.04;    // speaking sensitivity (0.0–1.0)
+const WORD_GATE_MS=2000;     // how long since last recognized word to allow scrolling
+const STOP_DELAY_MS=300;     // ms after silence before pausing
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+const templates={
+  youtube:"Hey everyone, welcome back!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, make sure to hit subscribe!\n\n[pause]\n\nLet's dive right in...",
+  course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will know:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[pause]\n\n[MAIN CONTENT HERE]\n\n[smile]\n\nSee you in the next lesson!",
+  social:"[HOOK — grab attention in first 3 seconds]\n\n[VALUE — the thing they came for]\n\n[pause]\n\n[CTA — follow for more / comment below]",
+  product:"Introducing [PRODUCT NAME].\n\nThe problem it solves: [PROBLEM]\n\n[pause]\n\nHere's how it works: [EXPLANATION]\n\nGet started today at [LINK]"
+};
+
+// ─── Script persistence ───────────────────────────────────────────────────────
+const ta=document.getElementById("scriptInput");
+ta.addEventListener("input",()=>localStorage.setItem("tp-script",ta.value));
+window.addEventListener("load",()=>{
+  const s=localStorage.getItem("tp-script");
+  if(s)ta.value=s;
+});
+
+// ─── Scrolling ────────────────────────────────────────────────────────────────
+function playScript(){
+  if(isPlaying)return;
+  isPlaying=true;
+  scrollInt=setInterval(()=>{
+    scrollPos+=scrollSpeed;
+    ta.scrollTop=scrollPos;
+  },16);
+}
+function pauseScript(){
+  if(!isPlaying)return;
+  isPlaying=false;
+  clearInterval(scrollInt);
+}
+function resetScript(){
+  pauseScript();
+  scrollPos=0;
+  ta.scrollTop=0;
+  lastWordTime=0;
+  voiceSpeaking=false;
+  audioLevels=[];
 }
 
-function showModal(id){document.getElementById(id).classList.add("active");}
-function closeModal(id){document.getElementById(id).classList.remove("active");}
-function loadTemplate(key){document.getElementById("scriptInput").value=templates[key];localStorage.setItem("teleprompter-script",templates[key]);closeModal("templatesModal");}
-
-function openFacebookLive(){window.open('https://www.facebook.com/live/create','_blank','width=1200,height=800');closeModal('streamModal');}
-function openYouTubeLive(){window.open('https://studio.youtube.com/channel/UC/livestreaming','_blank','width=1200,height=800');closeModal('streamModal');}
-function openTwitchLive(){window.open('https://dashboard.twitch.tv/stream-manager','_blank','width=1200,height=800');closeModal('streamModal');}
-
-async function startRecording(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:!0,audio:!0});
-    recordedChunks=[];
-    mediaRecorder=new MediaRecorder(stream);
-    mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};
-    mediaRecorder.onstop=()=>{
-      const blob=new Blob(recordedChunks,{type:"video/webm"}),url=URL.createObjectURL(blob),a=document.createElement("a");
-      a.href=url;a.download=`recording-${Date.now()}.webm`;a.click();URL.revokeObjectURL(url);
-      alert("✅ Recording saved!");
-    };
-    mediaRecorder.start();recordingStartTime=Date.now();
-    document.getElementById("startRecBtn").style.display="none";
-    document.getElementById("stopRecBtn").style.display="block";
-    recordingInterval=setInterval(()=>{
-      const s=Math.floor((Date.now()-recordingStartTime)/1000);
-      document.getElementById("recTime").textContent=`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-    },1000);
-  }catch(e){alert("❌ Camera and microphone access required");}
-}
-function stopRecording(){
-  if(mediaRecorder&&mediaRecorder.state!=="inactive"){
-    mediaRecorder.stop();mediaRecorder.stream.getTracks().forEach(t=>t.stop());
-    clearInterval(recordingInterval);
-    document.getElementById("startRecBtn").style.display="block";
-    document.getElementById("stopRecBtn").style.display="none";
-    document.getElementById("recTime").textContent="00:00";
-  }
-}
-
-function playScript(){if(!isPlaying){isPlaying=!0;scrollInt=setInterval(()=>{scrollPos+=scrollSpeed;document.getElementById("scriptInput").scrollTop=scrollPos;},16);}}
-function pauseScript(){if(isPlaying){isPlaying=!1;clearInterval(scrollInt);}}
-function resetScript(){pauseScript();scrollPos=0;lastWordTime=0;voiceSpeaking=!1;document.getElementById("scriptInput").scrollTop=0;}
+// ─── Speed modal ──────────────────────────────────────────────────────────────
 const speeds=[
   {label:'Very Slow',value:0.5},
   {label:'Slow',value:1},
   {label:'Normal',value:2},
   {label:'Fast',value:3},
   {label:'Very Fast',value:4.5},
-  {label:'Max',value:6},
+  {label:'Max',value:6}
 ];
 function showSpeedModal(){
-  const container=document.getElementById('speedOptions');
-  container.innerHTML=speeds.map(s=>`
-    <button onclick="setSpeed(${s.value})" style="padding:.5rem 1rem;border-radius:8px;border:2px solid ${scrollSpeed===s.value?'#00d4ff':'rgba(255,255,255,.2)'};background:${scrollSpeed===s.value?'rgba(0,212,255,.25)':'rgba(255,255,255,.05)'};color:#fff;cursor:pointer;font-size:.85rem;font-weight:600">
-      ${s.label}
-    </button>`).join('');
+  document.getElementById('speedOptions').innerHTML=speeds.map(s=>
+    `<button onclick="setSpeed(${s.value})" style="padding:.45rem .9rem;border-radius:7px;border:2px solid ${scrollSpeed===s.value?'#00d4ff':'rgba(255,255,255,.2)'};background:${scrollSpeed===s.value?'rgba(0,212,255,.25)':'rgba(255,255,255,.05)'};color:#fff;cursor:pointer;font-size:.82rem;font-weight:600">${s.label}</button>`
+  ).join('');
   showModal('speedModal');
 }
 function setSpeed(v){
@@ -221,7 +241,219 @@ function setSpeed(v){
   closeModal('speedModal');
 }
 
-console.log("%c🎬 Teleprompter Ready!","color:#00d4ff;font-size:20px");
+// ─── Display settings ─────────────────────────────────────────────────────────
+function setFontSize(size){
+  ta.style.fontSize=size;
+  ['sm','md','lg','xl'].forEach(id=>document.getElementById('fs-'+id).classList.remove('active'));
+  const map={'2rem':'sm','2.5rem':'md','3rem':'lg','4rem':'xl'};
+  document.getElementById('fs-'+map[size]).classList.add('active');
+}
+function setColor(hex,el){
+  ta.style.color=hex;
+  document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function toggleMirror(){
+  isMirror=!isMirror;
+  ta.classList.toggle('mirror',isMirror);
+  document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
+}
+
+// ─── Voice control ────────────────────────────────────────────────────────────
+// Architecture (learned from textream):
+//   SpeechRecognition → sets lastWordTime (gates non-speech sounds like "aaaa")
+//   AudioContext RMS  → sole controller of start/stop (instant, accurate)
+//   Only scroll when: RMS > threshold AND SR detected words within WORD_GATE_MS
+
+function toggleVoice(){voice.active?stopVoice():startVoice();}
+
+async function startVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert("❌ Voice requires Chrome or Edge.");return;}
+  try{
+    voice.stream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    });
+
+    // AudioContext — time-domain RMS (accurate, instant)
+    voice.ctx=new(window.AudioContext||window.webkitAudioContext)();
+    voice.analyser=voice.ctx.createAnalyser();
+    voice.analyser.fftSize=1024;
+    voice.analyser.smoothingTimeConstant=0.3;
+    voice.ctx.createMediaStreamSource(voice.stream).connect(voice.analyser);
+    const timeDomain=new Float32Array(voice.analyser.fftSize);
+
+    // SpeechRecognition — only updates lastWordTime, never calls play/pause
+    voice.recognition=new SR();
+    voice.recognition.continuous=true;
+    voice.recognition.interimResults=true;
+    voice.recognition.lang='en-US';
+    voice.recognition.onresult=(e)=>{
+      let t='';
+      for(let i=e.resultIndex;i<e.results.length;i++) t+=e.results[i][0].transcript;
+      if(t.trim()) lastWordTime=Date.now();
+    };
+    voice.recognition.onend=()=>{if(voice.active) voice.recognition.start();};
+    voice.recognition.onerror=(e)=>{
+      if(e.error==='not-allowed'){alert("❌ Microphone permission denied.");stopVoice();}
+    };
+    voice.recognition.start();
+
+    voice.active=true;
+    voiceSpeaking=false;
+    lastWordTime=0;
+    audioLevels=[];
+
+    document.getElementById("voiceStatus").textContent="ON";
+    document.getElementById("voiceStatus").className="status-badge active";
+    document.getElementById("voiceBtn").classList.add("active");
+    document.getElementById("voiceBar").classList.add("active");
+
+    // RMS monitor — sole controller of scroll start/stop
+    function monitor(){
+      if(!voice.active) return;
+
+      // Compute RMS from time-domain waveform (same method as textream)
+      voice.analyser.getFloatTimeDomainData(timeDomain);
+      let sum=0;
+      for(let i=0;i<timeDomain.length;i++) sum+=timeDomain[i]*timeDomain[i];
+      const rms=Math.sqrt(sum/timeDomain.length);
+
+      // Rolling 10-sample average (~160ms smoothing)
+      audioLevels.push(rms);
+      if(audioLevels.length>10) audioLevels.shift();
+      const avgRms=audioLevels.reduce((a,b)=>a+b,0)/audioLevels.length;
+
+      // Update visual bar
+      const pct=Math.min(100,avgRms*800);
+      document.getElementById("levelBar").style.width=pct+'%';
+      document.getElementById("levelBar").style.background=avgRms>RMS_THRESHOLD?'#0f0':'rgba(255,255,255,.3)';
+
+      // Gate: only "speaking" if RMS high AND SR detected real words recently
+      const recentWords=(Date.now()-lastWordTime)<WORD_GATE_MS;
+      const speaking=avgRms>RMS_THRESHOLD && recentWords;
+
+      document.getElementById("voiceLabel").textContent=speaking?'🟢 reading':'⚫ silent';
+      document.getElementById("voiceHint").textContent=
+        avgRms>RMS_THRESHOLD && !recentWords ? '(say a word to start)' : '';
+
+      // Transition: silent→speaking
+      if(speaking && !voiceSpeaking){
+        voiceSpeaking=true;
+        clearTimeout(voice.pauseTimer);
+        if(!isPlaying) playScript();
+      }
+      // Transition: speaking→silent (set timer ONCE)
+      else if(!speaking && voiceSpeaking){
+        voiceSpeaking=false;
+        clearTimeout(voice.pauseTimer);
+        voice.pauseTimer=setTimeout(()=>{
+          if(isPlaying) pauseScript();
+        }, STOP_DELAY_MS);
+      }
+
+      requestAnimationFrame(monitor);
+    }
+    monitor();
+
+  }catch(e){alert("❌ Microphone access required.");}
+}
+
+function stopVoice(){
+  voice.active=false;
+  voiceSpeaking=false;
+  clearTimeout(voice.pauseTimer);
+  if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
+  if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
+  if(voice.ctx) voice.ctx.close();
+  voice.stream=null; voice.ctx=null; voice.analyser=null;
+  audioLevels=[];
+  document.getElementById("voiceStatus").textContent="OFF";
+  document.getElementById("voiceStatus").className="status-badge inactive";
+  document.getElementById("voiceBtn").classList.remove("active");
+  document.getElementById("voiceBar").classList.remove("active");
+  pauseScript();
+}
+
+// ─── Camera ───────────────────────────────────────────────────────────────────
+async function toggleCamera(){
+  const el=document.getElementById("cameraPreview");
+  if(cameraStream){
+    cameraStream.getTracks().forEach(t=>t.stop());
+    cameraStream=null;
+    el.classList.remove("active");
+    document.getElementById("cameraStatus").textContent="OFF";
+    document.getElementById("cameraStatus").className="status-badge inactive";
+    document.getElementById("cameraBtn").classList.remove("active");
+  }else{
+    try{
+      cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});
+      el.srcObject=cameraStream;
+      el.classList.add("active");
+      document.getElementById("cameraStatus").textContent="ON";
+      document.getElementById("cameraStatus").className="status-badge active";
+      document.getElementById("cameraBtn").classList.add("active");
+    }catch(e){alert("❌ Camera access required.");}
+  }
+}
+
+// ─── Recording ────────────────────────────────────────────────────────────────
+async function startRecording(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    recordedChunks=[];
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=e=>{if(e.data.size>0) recordedChunks.push(e.data);};
+    mediaRecorder.onstop=()=>{
+      const blob=new Blob(recordedChunks,{type:"video/webm"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`recording-${Date.now()}.webm`; a.click();
+      URL.revokeObjectURL(url);
+    };
+    mediaRecorder.start();
+    recordingStartTime=Date.now();
+    document.getElementById("startRecBtn").style.display="none";
+    document.getElementById("stopRecBtn").style.display="block";
+    recordingInterval=setInterval(()=>{
+      const s=Math.floor((Date.now()-recordingStartTime)/1000);
+      document.getElementById("recTime").textContent=
+        `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+    },1000);
+  }catch(e){alert("❌ Camera and microphone access required.");}
+}
+function stopRecording(){
+  if(mediaRecorder&&mediaRecorder.state!=="inactive"){
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t=>t.stop());
+    clearInterval(recordingInterval);
+    document.getElementById("startRecBtn").style.display="block";
+    document.getElementById("stopRecBtn").style.display="none";
+    document.getElementById("recTime").textContent="00:00";
+  }
+}
+
+// ─── Streaming ────────────────────────────────────────────────────────────────
+function openFacebookLive(){window.open('https://www.facebook.com/live/create','_blank','width=1200,height=800');closeModal('streamModal');}
+function openYouTubeLive(){window.open('https://studio.youtube.com/channel/UC/livestreaming','_blank','width=1200,height=800');closeModal('streamModal');}
+function openTwitchLive(){window.open('https://dashboard.twitch.tv/stream-manager','_blank','width=1200,height=800');closeModal('streamModal');}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+function loadTemplate(key){
+  ta.value=templates[key];
+  localStorage.setItem("tp-script",templates[key]);
+  closeModal("templatesModal");
+}
+
+// ─── Modals ───────────────────────────────────────────────────────────────────
+function showModal(id){document.getElementById(id).classList.add("active");}
+function closeModal(id){document.getElementById(id).classList.remove("active");}
+// close modal on backdrop click
+document.querySelectorAll('.modal').forEach(m=>{
+  m.addEventListener('click',e=>{if(e.target===m) m.classList.remove('active');});
+});
+
+console.log("%c🎬 Teleprompter Ready","color:#00d4ff;font-size:16px;font-weight:bold");
 </script>
 </body>
 </html>
