@@ -286,11 +286,10 @@ function highlightWord(idx, scrollToIt=true){
   if(idx<0 || !wordSpans[idx]) return;
   wordSpans[idx].classList.add('hl');
   if(scrollToIt){
-    // Scroll so the highlighted word sits at the reading line (vertical center)
     const el=wordSpans[idx];
-    const target=el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2;
-    disp.scrollTo({top:Math.max(0,target), behavior:'smooth'});
-    scrollPos=disp.scrollTop;
+    const target=Math.max(0, el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2);
+    disp.scrollTo({top:target, behavior:'smooth'});
+    scrollPos=target; // keep scrollPos in sync so Play mode doesn't jump back
   }
 }
 
@@ -321,7 +320,7 @@ function playScript(){
   scrollInt=setInterval(()=>{
     scrollPos+=scrollSpeed;
     disp.scrollTop=scrollPos;
-    if(!voice.active) syncHighlightToScroll(); // play mode only; voice uses matchSpoken
+    syncHighlightToScroll();
     updateProgress();
   },16);
 }
@@ -362,14 +361,10 @@ function matchSpoken(transcript){
     for(let i=pos;i<limit;i++){
       if(fuzzyMatch(scriptWords[i], word)){
         if(i!==highlightIdx){
-          highlightWord(i, false); // highlight only — auto-scroll owns scrollTop
-          // Sync auto-scroll position to this word so it continues from here
-          const el=wordSpans[i];
-          const target=el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2;
-          scrollPos=Math.max(0,target);
+          highlightWord(i, true); // scroll to spoken word (voice has no auto-scroll)
           updateProgress();
         }
-        pos=i+1; // always advance past matched word
+        pos=i+1; // advance past matched word
         break;
       }
     }
@@ -481,14 +476,11 @@ async function startVoice(){
       document.getElementById('voiceHint').textContent=
         avg>RMS_THRESHOLD && !recentWords ? '(say a script word to start)' : '';
 
+      // voiceSpeaking only gates whether SR word matches trigger scrolling
       if(speaking && !voiceSpeaking){
         voiceSpeaking=true;
-        clearTimeout(voice.pauseTimer);
-        if(!isPlaying) playScript();
       }else if(!speaking && voiceSpeaking){
         voiceSpeaking=false;
-        clearTimeout(voice.pauseTimer);
-        voice.pauseTimer=setTimeout(()=>{if(isPlaying) pauseScript();}, STOP_DELAY_MS);
       }
       requestAnimationFrame(monitor);
     }
@@ -507,7 +499,6 @@ function stopVoice(){
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
   document.getElementById('voiceBar').classList.remove('on');
-  pauseScript();
   exitReadingMode();
 }
 
