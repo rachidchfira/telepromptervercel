@@ -42,6 +42,7 @@
 <script>
 let isPlaying=!1,scrollPos=0,scrollSpeed=2,scrollInt=null;
 const voice={active:!1,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
+let lastWordTime=0,voiceSpeaking=!1;
 const templates={
   youtube:"Hey [YOUR NAME]!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\nLet's dive in...",
   course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[MAIN CONTENT]\n\nSee you in the next lesson!",
@@ -52,12 +53,10 @@ let mediaRecorder=null,recordedChunks=[],recordingStartTime=0,recordingInterval=
 
 document.getElementById("scriptInput").addEventListener("input",()=>{
   localStorage.setItem("teleprompter-script",document.getElementById("scriptInput").value);
-  buildWordMap();
 });
 window.addEventListener("load",()=>{
   const saved=localStorage.getItem("teleprompter-script");
   if(saved)document.getElementById("scriptInput").value=saved;
-  buildWordMap();
 });
 
 function toggleVoice(){voice.active?stopVoice():startVoice();}
@@ -65,7 +64,6 @@ async function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert("❌ Please use Chrome or Edge.");return;}
   try{
-    // AudioContext — only for detecting SILENCE (fast stop)
     voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0,autoGainControl:!0}});
     voice.ctx=new(window.AudioContext||window.webkitAudioContext)();
     voice.analyser=voice.ctx.createAnalyser();
@@ -76,7 +74,7 @@ async function startVoice(){
     const lo=Math.floor(300/binHz),hi=Math.floor(3000/binHz);
     const data=new Uint8Array(voice.analyser.frequencyBinCount);
 
-    // SpeechRecognition — only for detecting real WORDS (accurate start)
+    // SR only updates lastWordTime — never calls play/pause itself
     voice.recognition=new SR();
     voice.recognition.continuous=!0;
     voice.recognition.interimResults=!0;
@@ -84,35 +82,40 @@ async function startVoice(){
     voice.recognition.onresult=(e)=>{
       let t='';
       for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;
-      if(!t.trim())return;
-      document.getElementById("hearingText").textContent='🟢 '+t.trim();
-      if(!isPlaying)playScript();
+      if(t.trim())lastWordTime=Date.now();
     };
     voice.recognition.onend=()=>{if(voice.active)voice.recognition.start();};
     voice.recognition.onerror=(e)=>{if(e.error==='not-allowed'){alert("❌ Mic denied");stopVoice();}};
     voice.recognition.start();
 
     voice.active=!0;
+    voiceSpeaking=!1;
+    lastWordTime=0;
     document.getElementById("voiceStatus").textContent="ON";
     document.getElementById("voiceStatus").className="status-badge active";
     document.getElementById("voiceBtn").classList.add("active");
     document.getElementById("hearingBox").style.display="block";
-    document.getElementById("hearingText").textContent="⚫ listening...";
 
-    // silence monitor — fires timer ONCE on speaking→silent transition
-    let wasSilent=!0;
+    // AudioContext is the SOLE controller of start and stop
+    // Only scrolls when: audio level high AND SR detected words recently (guards against aaaa/noise)
     function monitor(){
       if(!voice.active)return;
       voice.analyser.getByteFrequencyData(data);
       let sum=0;for(let i=lo;i<=hi;i++)sum+=data[i];
-      const silent=(sum/(hi-lo))<15;
-      if(!silent&&wasSilent){
-        // speaking started — cancel any pending pause
-        wasSilent=!1;
+      const level=Math.round(sum/(hi-lo));
+      const recentWords=(Date.now()-lastWordTime)<2000;
+      const speaking=level>15&&recentWords;
+
+      document.getElementById("hearingText").textContent=
+        `${speaking?'🟢 reading':'⚫ silent'} (level:${level}${!recentWords&&level>15?' — say a word first':''})`;
+
+      if(speaking&&!voiceSpeaking){
+        voiceSpeaking=!0;
         clearTimeout(voice.pauseTimer);
-      }else if(silent&&!wasSilent){
-        // just went silent — set timer once
-        wasSilent=!0;
+        if(!isPlaying)playScript();
+      }else if(!speaking&&voiceSpeaking){
+        voiceSpeaking=!1;
+        clearTimeout(voice.pauseTimer);
         voice.pauseTimer=setTimeout(()=>{if(isPlaying)pauseScript();},150);
       }
       requestAnimationFrame(monitor);
@@ -122,6 +125,7 @@ async function startVoice(){
 }
 function stopVoice(){
   voice.active=!1;
+  voiceSpeaking=!1;
   clearTimeout(voice.pauseTimer);
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream)voice.stream.getTracks().forEach(t=>t.stop());
@@ -194,7 +198,7 @@ function stopRecording(){
 
 function playScript(){if(!isPlaying){isPlaying=!0;scrollInt=setInterval(()=>{scrollPos+=scrollSpeed;document.getElementById("scriptInput").scrollTop=scrollPos;},16);}}
 function pauseScript(){if(isPlaying){isPlaying=!1;clearInterval(scrollInt);}}
-function resetScript(){pauseScript();scrollPos=0;currentWordIndex=0;document.getElementById("scriptInput").scrollTop=0;}
+function resetScript(){pauseScript();scrollPos=0;lastWordTime=0;voiceSpeaking=!1;document.getElementById("scriptInput").scrollTop=0;}
 const speeds=[
   {label:'Very Slow',value:0.5},
   {label:'Slow',value:1},
