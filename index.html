@@ -85,6 +85,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}
 .swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .2s;display:inline-block}
 .swatch.selected{border-color:#fff;transform:scale(1.2)}
+
+/* ── Mobile ── */
+@media(max-width:600px){
+  body{padding:.4rem}
+  .header h1{font-size:1.3rem}
+  .header p{font-size:.72rem}
+  #scriptInput,#scriptDisplay{
+    height:62vh;padding:1.2rem 1rem;font-size:1.8rem;line-height:1.6;border-width:2px
+  }
+  .btn{padding:.4rem .7rem;font-size:.72rem}
+  .sep{display:none}
+  #cameraPreview{width:100px;height:75px;top:8px;right:8px}
+  .modal-content{padding:1rem;max-height:90vh}
+}
 </style>
 </head>
 <body>
@@ -103,10 +117,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 <div class="modal" id="streamModal"><div class="modal-content">
   <h2 style="color:#00d4ff;margin-bottom:1rem">📡 Go Live</h2>
-  <div class="card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Opens facebook.com/live/create — log in to Facebook first</small></div>
+  <div class="card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small id="fbLiveHint">Opens Facebook — start your live stream there</small></div>
   <div class="card" onclick="openYouTubeLive()"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Opens YouTube Studio livestreaming</small></div>
   <div class="card" onclick="openTwitchLive()"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Opens Twitch Creator Dashboard</small></div>
-  <p style="margin-top:1rem;padding:.8rem;background:rgba(0,212,255,.08);border-radius:8px;font-size:.85rem">💡 Keep this teleprompter window open while you stream!</p>
+  <div id="mobileLiveTip" style="display:none;margin-top:1rem;padding:.9rem;background:rgba(0,212,255,.08);border-radius:8px;font-size:.83rem;line-height:1.6">
+    📱 <strong>Mobile workflow:</strong><br>
+    1. Tap Facebook Live above — it opens in a new tab<br>
+    2. Start your live stream in the Facebook app or tab<br>
+    3. Switch back to this tab to read your script<br>
+    <em style="opacity:.6">On Android you can also use split-screen</em>
+  </div>
+  <p id="desktopLiveTip" style="margin-top:1rem;padding:.8rem;background:rgba(0,212,255,.08);border-radius:8px;font-size:.85rem">💡 Keep this teleprompter window open while you stream!</p>
   <button onclick="closeModal('streamModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
 </div></div>
 
@@ -221,6 +242,14 @@ ta.addEventListener('input',()=>localStorage.setItem('tp-script',ta.value));
 window.addEventListener('load',()=>{
   const s=localStorage.getItem('tp-script');
   if(s) ta.value=s;
+  // Mobile adjustments
+  if(isMobile){
+    fontSize='2rem'; ta.style.fontSize=fontSize;
+    document.getElementById('mobileLiveTip').style.display='block';
+    document.getElementById('desktopLiveTip').style.display='none';
+    document.getElementById('fs-lg').classList.remove('active');
+    document.getElementById('fs-md').classList.add('active');
+  }
 });
 
 // ── Reading mode: enter / exit ────────────────────────────────────────────────
@@ -572,9 +601,27 @@ function stopRecording(){
 }
 
 // ── Streaming ─────────────────────────────────────────────────────────────────
-function openFacebookLive(){window.open('https://www.facebook.com/live/create','_blank','width=1200,height=800');closeModal('streamModal');}
-function openYouTubeLive(){window.open('https://studio.youtube.com/channel/UC/livestreaming','_blank','width=1200,height=800');closeModal('streamModal');}
-function openTwitchLive(){window.open('https://dashboard.twitch.tv/stream-manager','_blank','width=1200,height=800');closeModal('streamModal');}
+const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function openFacebookLive(){
+  // On mobile: open in same tab flow (popup dimensions don't apply)
+  if(isMobile){
+    window.open('https://www.facebook.com/live/create','_blank');
+  }else{
+    window.open('https://www.facebook.com/live/create','_blank','width=1200,height=800');
+  }
+  closeModal('streamModal');
+}
+function openYouTubeLive(){
+  const url='https://studio.youtube.com/channel/UC/livestreaming';
+  isMobile?window.open(url,'_blank'):window.open(url,'_blank','width=1200,height=800');
+  closeModal('streamModal');
+}
+function openTwitchLive(){
+  const url='https://dashboard.twitch.tv/stream-manager';
+  isMobile?window.open(url,'_blank'):window.open(url,'_blank','width=1200,height=800');
+  closeModal('streamModal');
+}
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 const templates={
