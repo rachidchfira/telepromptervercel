@@ -63,52 +63,21 @@ window.addEventListener("load",()=>{
 
 function buildWordMap(){
   const text=document.getElementById("scriptInput").value;
-  scriptWordMap=[];
-  const regex=/\S+/g;let m;
-  while((m=regex.exec(text))!==null){
-    const clean=m[0].replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
-    if(clean.length>1)scriptWordMap.push({clean,charIndex:m.index});
-  }
+  const words=text.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').split(/\s+/).filter(w=>w.length>2);
+  scriptWordMap=new Set(words);
 }
 
 function matchAndScroll(transcript){
-  if(!scriptWordMap.length){buildWordMap();}
-  if(!scriptWordMap.length)return;
-  const spoken=transcript.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').trim().split(/\s+/).filter(w=>w.length>1);
-  if(!spoken.length)return;
-  let bestMatch=-1;
-  for(const word of spoken){
-    // search ahead from current position (large window)
-    const ahead=Math.min(currentWordIndex+60,scriptWordMap.length);
-    for(let i=currentWordIndex;i<ahead;i++){
-      if(scriptWordMap[i].clean===word||scriptWordMap[i].clean.startsWith(word)||word.startsWith(scriptWordMap[i].clean)){
-        if(i>bestMatch)bestMatch=i;
-        break;
-      }
-    }
-    // if no match ahead, search full script (user may have jumped)
-    if(bestMatch===-1){
-      for(let i=0;i<scriptWordMap.length;i++){
-        if(scriptWordMap[i].clean===word){bestMatch=i;break;}
-      }
-    }
+  if(!scriptWordMap.size){buildWordMap();}
+  if(!scriptWordMap.size)return;
+  const spoken=transcript.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').split(/\s+/).filter(w=>w.length>2);
+  const hasMatch=spoken.some(w=>scriptWordMap.has(w));
+  if(hasMatch){
+    clearTimeout(voice.pauseTimeout);
+    if(!isPlaying)playScript();
+    voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},300);
   }
-  if(bestMatch>=0){
-    currentWordIndex=bestMatch+1;
-    scrollToChar(scriptWordMap[bestMatch].charIndex);
-  }
-}
-
-function scrollToChar(charIndex){
-  const ta=document.getElementById("scriptInput");
-  const text=ta.value.substring(0,charIndex);
-  const lineNum=text.split('\n').length-1;
-  const lh=parseFloat(getComputedStyle(ta).lineHeight);
-  const lineHeight=isNaN(lh)?parseFloat(getComputedStyle(ta).fontSize)*1.6:lh;
-  const paddingTop=parseFloat(getComputedStyle(ta).paddingTop)||48;
-  const target=Math.max(0,lineNum*lineHeight+paddingTop-ta.clientHeight/3);
-  ta.scrollTop=target;
-  scrollPos=target;
+  return hasMatch;
 }
 
 function toggleVoice(){voice.active?stopVoice():startVoice();}
@@ -123,7 +92,7 @@ function startVoice(){
   document.getElementById("voiceStatus").className="status-badge active";
   document.getElementById("voiceBtn").classList.add("active");
   document.getElementById("hearingBox").style.display="block";
-  document.getElementById("hearingText").textContent=`ready — ${scriptWordMap.length} words in script`;
+  document.getElementById("hearingText").textContent=`ready — ${scriptWordMap.size} words in script`;
   function createAndStart(){
     if(!voice.active)return;
     const r=new SR();
@@ -138,8 +107,8 @@ function startVoice(){
       }
       const heard=(final||interim).trim();
       if(!heard)return;
-      matchAndScroll(heard);
-      document.getElementById("hearingText").textContent=`"${heard}" — word ${currentWordIndex}/${scriptWordMap.length}`;
+      const matched=matchAndScroll(heard);
+      document.getElementById("hearingText").textContent=heard+(matched?' ✓':'  ✗ not in script');
     };
     r.onend=()=>{
       // restart unless stopped intentionally
