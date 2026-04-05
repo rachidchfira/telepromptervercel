@@ -367,7 +367,7 @@ function matchSpoken(transcript){
   let pos=Math.max(0, highlightIdx);
   let lastMatch=-1;
   for(const word of newWords){
-    const limit=Math.min(pos+20, scriptWords.length);
+    const limit=Math.min(pos+3, scriptWords.length); // small window — never jump lines
     for(let i=pos;i<limit;i++){
       if(fuzzyMatch(scriptWords[i], word)){
         lastMatch=i; pos=i+1; break;
