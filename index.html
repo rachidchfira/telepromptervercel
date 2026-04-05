@@ -86,7 +86,6 @@ async function startVoice(){
       for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;
       if(!t.trim())return;
       document.getElementById("hearingText").textContent='🟢 '+t.trim();
-      clearTimeout(voice.pauseTimer);
       if(!isPlaying)playScript();
     };
     voice.recognition.onend=()=>{if(voice.active)voice.recognition.start();};
