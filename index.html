@@ -321,7 +321,7 @@ function playScript(){
   scrollInt=setInterval(()=>{
     scrollPos+=scrollSpeed;
     disp.scrollTop=scrollPos;
-    syncHighlightToScroll();
+    if(!voice.active) syncHighlightToScroll(); // play mode only; voice uses matchSpoken
     updateProgress();
   },16);
 }
@@ -362,7 +362,11 @@ function matchSpoken(transcript){
     for(let i=pos;i<limit;i++){
       if(fuzzyMatch(scriptWords[i], word)){
         if(i!==highlightIdx){
-          highlightWord(i, true);
+          highlightWord(i, false); // highlight only — auto-scroll owns scrollTop
+          // Sync auto-scroll position to this word so it continues from here
+          const el=wordSpans[i];
+          const target=el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2;
+          scrollPos=Math.max(0,target);
           updateProgress();
         }
         pos=i+1; // always advance past matched word
