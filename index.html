@@ -40,7 +40,7 @@
 
 <script>
 let isPlaying=!1,scrollPos=0,scrollSpeed=1,scrollInt=null;
-const voice={active:!1,ctx:null,analyser:null,mic:null,threshold:30,delay:500,timeout:null,stream:null};
+const voice={active:!1,recognition:null,pauseTimeout:null};
 const templates={
   youtube:"Hey [YOUR NAME]!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\nLet's dive in...",
   course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[MAIN CONTENT]\n\nSee you in the next lesson!",
@@ -59,46 +59,42 @@ window.addEventListener("load",()=>{
   if(saved){document.getElementById("scriptInput").value=saved;updateDisplay();}
 });
 
-async function toggleVoice(){voice.active?stopVoice():await startVoice()}
-async function startVoice(){
-  try{
-    voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:!0,noiseSuppression:!0}});
-    voice.ctx=new(window.AudioContext||window.webkitAudioContext);
-    voice.analyser=voice.ctx.createAnalyser();
-    voice.mic=voice.ctx.createMediaStreamSource(voice.stream);
-    voice.analyser.smoothingTimeConstant=.8;voice.analyser.fftSize=1024;
-    voice.mic.connect(voice.analyser);
-    voice.active=!0;
-    document.getElementById("voiceStatus").textContent="ON";
-    document.getElementById("voiceStatus").className="status-badge active";
-    document.getElementById("voiceBtn").classList.add("active");
-    monitorVoice();
-  }catch(e){alert("❌ Microphone access required");}
+function toggleVoice(){voice.active?stopVoice():startVoice();}
+function startVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert("❌ Speech recognition not supported in this browser. Try Chrome.");return;}
+  voice.recognition=new SR();
+  voice.recognition.continuous=!0;
+  voice.recognition.interimResults=!0;
+  voice.recognition.lang='en-US';
+  voice.recognition.onresult=()=>{
+    // actual words detected — scroll
+    clearTimeout(voice.pauseTimeout);
+    if(!isPlaying)playScript();
+    // pause if no new words for 1.5s
+    voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},1500);
+  };
+  voice.recognition.onend=()=>{
+    // auto-restart so it stays on continuously
+    if(voice.active)voice.recognition.start();
+  };
+  voice.recognition.onerror=(e)=>{
+    if(e.error==='not-allowed'){alert("❌ Microphone permission denied.");stopVoice();}
+  };
+  voice.recognition.start();
+  voice.active=!0;
+  document.getElementById("voiceStatus").textContent="ON";
+  document.getElementById("voiceStatus").className="status-badge active";
+  document.getElementById("voiceBtn").classList.add("active");
 }
 function stopVoice(){
   voice.active=!1;
-  voice.stream&&voice.stream.getTracks().forEach(t=>t.stop());
-  voice.ctx&&voice.ctx.close();
+  clearTimeout(voice.pauseTimeout);
+  if(voice.recognition){voice.recognition.stop();voice.recognition=null;}
   document.getElementById("voiceStatus").textContent="OFF";
   document.getElementById("voiceStatus").className="status-badge inactive";
   document.getElementById("voiceBtn").classList.remove("active");
   pauseScript();
-}
-function monitorVoice(){
-  if(!voice.active)return;
-  const bins=voice.analyser.frequencyBinCount,data=new Uint8Array(bins);
-  let wasSpeaking=!1;
-  const tick=()=>{
-    if(!voice.active)return;
-    voice.analyser.getByteFrequencyData(data);
-    let sum=0;for(let i=0;i<bins;i++)sum+=data[i];
-    const speaking=sum/bins>voice.threshold,prev=wasSpeaking;
-    wasSpeaking=speaking;
-    if(speaking&&!prev){clearTimeout(voice.timeout);if(!isPlaying)playScript();}
-    else if(!speaking&&prev){clearTimeout(voice.timeout);voice.timeout=setTimeout(()=>{if(!wasSpeaking&&isPlaying)pauseScript();},voice.delay);}
-    requestAnimationFrame(tick);
-  };
-  tick();
 }
 
 let cameraStream=null;
