@@ -14,6 +14,8 @@
 
 <div class="modal" id="streamModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">📡 Go Live</h2><div class="stream-card" onclick="openFacebookLive()"><strong style="color:#00d4ff">📘 Facebook Live</strong><br><small>Opens Facebook's Go Live page — make sure you're logged into Facebook in your browser</small></div><div class="stream-card" onclick="openYouTubeLive()"><strong style="color:#00d4ff">📺 YouTube Live</strong><br><small>Opens YouTube Studio livestreaming</small></div><div class="stream-card" onclick="openTwitchLive()"><strong style="color:#00d4ff">🎮 Twitch</strong><br><small>Opens Twitch Creator Dashboard</small></div><p style="margin-top:1.5rem;padding:1rem;background:rgba(0,212,255,.1);border-radius:8px;font-size:.9rem">💡 Keep this teleprompter window open while you stream in the other window!</p><button onclick="closeModal('streamModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
 
+<div class="modal" id="speedModal"><div class="modal-content"><h2 style="color:#00d4ff;margin-bottom:1.5rem">⚡ Scroll Speed</h2><div id="speedOptions"></div><button onclick="closeModal('speedModal')" class="btn" style="margin-top:1rem;width:100%">Close</button></div></div>
+
 <div class="modal" id="recordModal"><div class="modal-content" style="text-align:center"><h2 style="color:#00d4ff;margin-bottom:1.5rem">⏺️ Recording</h2><div id="recTime" style="font-size:3rem;color:#ff4757;margin:2rem 0;font-family:monospace">00:00</div><button onclick="startRecording()" id="startRecBtn" class="btn" style="width:100%;margin:.5rem 0">⏺️ Start</button><button onclick="stopRecording()" id="stopRecBtn" class="btn" style="width:100%;margin:.5rem 0;display:none">⏹️ Stop</button><button onclick="closeModal('recordModal')" class="btn" style="width:100%;margin:.5rem 0">Close</button></div></div>
 
 <div class="container">
@@ -32,8 +34,7 @@
     <button class="btn" onclick="playScript()">▶️ Play</button>
     <button class="btn" onclick="pauseScript()">⏸️ Pause</button>
     <button class="btn" onclick="resetScript()">🔄 Reset</button>
-    <button class="btn" onclick="faster()">⚡ Faster</button>
-    <button class="btn" onclick="slower()">🐢 Slower</button>
+    <button class="btn" id="speedBtn" onclick="showSpeedModal()">⚡ Speed <span id="speedLabel">2x</span></button>
   </div>
   <div id="hearingBox" style="display:none;margin-bottom:.5rem;padding:.6rem 1rem;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.3);border-radius:8px;font-size:.85rem;color:#0f0">🎤 Hearing: <span id="hearingText" style="font-style:italic">...</span></div>
   <div class="teleprompter"><div id="teleprompterText">Your script appears here...</div></div>
@@ -180,8 +181,28 @@ function stopRecording(){
 function playScript(){if(!isPlaying){isPlaying=!0;scrollInt=setInterval(()=>{scrollPos+=scrollSpeed;document.querySelector(".teleprompter").scrollTop=scrollPos;},16);}}
 function pauseScript(){if(isPlaying){isPlaying=!1;clearInterval(scrollInt);}}
 function resetScript(){pauseScript();scrollPos=0;document.querySelector(".teleprompter").scrollTop=0;}
-function faster(){scrollSpeed=Math.min(5,scrollSpeed+.3);alert(`Speed: ${scrollSpeed.toFixed(1)}x`);}
-function slower(){scrollSpeed=Math.max(.2,scrollSpeed-.3);alert(`Speed: ${scrollSpeed.toFixed(1)}x`);}
+const speeds=[
+  {label:'Very Slow',value:0.5},
+  {label:'Slow',value:1},
+  {label:'Normal',value:2},
+  {label:'Fast',value:3},
+  {label:'Very Fast',value:4.5},
+  {label:'Max',value:6},
+];
+function showSpeedModal(){
+  const container=document.getElementById('speedOptions');
+  container.innerHTML=speeds.map(s=>`
+    <div class="stream-card" onclick="setSpeed(${s.value})" style="${scrollSpeed===s.value?'background:rgba(0,212,255,.25);border-color:#00d4ff;':''}">
+      <strong style="color:#00d4ff">${s.label}</strong>
+      <span style="float:right;color:rgba(255,255,255,.5)">${s.value}x${scrollSpeed===s.value?' ✓':''}</span>
+    </div>`).join('');
+  showModal('speedModal');
+}
+function setSpeed(v){
+  scrollSpeed=v;
+  document.getElementById('speedLabel').textContent=speeds.find(s=>s.value===v).label;
+  closeModal('speedModal');
+}
 
 console.log("%c🎬 Teleprompter Ready!","color:#00d4ff;font-size:20px");
 </script>
