@@ -99,21 +99,21 @@ async function startVoice(){
     document.getElementById("hearingBox").style.display="block";
     document.getElementById("hearingText").textContent="⚫ listening...";
 
-    // silence monitor — stops scroll fast when you stop talking
+    // silence monitor — fires timer ONCE on speaking→silent transition
+    let wasSilent=!0;
     function monitor(){
       if(!voice.active)return;
       voice.analyser.getByteFrequencyData(data);
       let sum=0;for(let i=lo;i<=hi;i++)sum+=data[i];
       const silent=(sum/(hi-lo))<15;
-      if(silent&&isPlaying){
+      if(!silent&&wasSilent){
+        // speaking started — cancel any pending pause
+        wasSilent=!1;
         clearTimeout(voice.pauseTimer);
-        voice.pauseTimer=setTimeout(()=>{
-          voice.analyser.getByteFrequencyData(data);
-          let s2=0;for(let i=lo;i<=hi;i++)s2+=data[i];
-          if(s2/(hi-lo)<15)pauseScript();
-        },150);
-      }else if(!silent){
-        clearTimeout(voice.pauseTimer);
+      }else if(silent&&!wasSilent){
+        // just went silent — set timer once
+        wasSilent=!0;
+        voice.pauseTimer=setTimeout(()=>{if(isPlaying)pauseScript();},150);
       }
       requestAnimationFrame(monitor);
     }
