@@ -41,7 +41,8 @@
 
 <script>
 let isPlaying=!1,scrollPos=0,scrollSpeed=2,scrollInt=null;
-const voice={active:!1,recognition:null,pauseTimeout:null};
+const voice={active:!1,recognition:null,restarting:!1};
+let scriptWordMap=[],currentWordIndex=0;
 const templates={
   youtube:"Hey [YOUR NAME]!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\nLet's dive in...",
   course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[MAIN CONTENT]\n\nSee you in the next lesson!",
@@ -52,11 +53,49 @@ let mediaRecorder=null,recordedChunks=[],recordingStartTime=0,recordingInterval=
 
 document.getElementById("scriptInput").addEventListener("input",()=>{
   localStorage.setItem("teleprompter-script",document.getElementById("scriptInput").value);
+  buildWordMap();
 });
 window.addEventListener("load",()=>{
   const saved=localStorage.getItem("teleprompter-script");
   if(saved)document.getElementById("scriptInput").value=saved;
+  buildWordMap();
 });
+
+function buildWordMap(){
+  const text=document.getElementById("scriptInput").value;
+  scriptWordMap=[];
+  const regex=/\S+/g;let m;
+  while((m=regex.exec(text))!==null){
+    const clean=m[0].replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
+    if(clean)scriptWordMap.push({clean,charIndex:m.index});
+  }
+}
+
+function matchAndScroll(transcript){
+  const spoken=transcript.toLowerCase().replace(/[^a-zA-Z0-9\s]/g,'').trim().split(/\s+/);
+  for(const word of spoken){
+    if(!word)continue;
+    const limit=Math.min(currentWordIndex+20,scriptWordMap.length);
+    for(let i=currentWordIndex;i<limit;i++){
+      if(scriptWordMap[i].clean===word){
+        currentWordIndex=i+1;
+        scrollToChar(scriptWordMap[i].charIndex);
+        break;
+      }
+    }
+  }
+}
+
+function scrollToChar(charIndex){
+  const ta=document.getElementById("scriptInput");
+  const text=ta.value.substring(0,charIndex);
+  const lineNum=text.split('\n').length-1;
+  const lineHeight=parseFloat(getComputedStyle(ta).lineHeight)||80;
+  const paddingTop=parseFloat(getComputedStyle(ta).paddingTop)||48;
+  const target=Math.max(0,lineNum*lineHeight+paddingTop-ta.clientHeight/3);
+  ta.scrollTop=target;
+  scrollPos=target;
+}
 
 function toggleVoice(){voice.active?stopVoice():startVoice();}
 function startVoice(){
@@ -75,18 +114,16 @@ function startVoice(){
     r.interimResults=!0;
     r.lang='en-US';
     r.onresult=(e)=>{
-      // pull transcript from latest result
-      let transcript='';
+      let interim='',final='';
       for(let i=e.resultIndex;i<e.results.length;i++){
-        transcript+=e.results[i][0].transcript;
+        if(e.results[i].isFinal)final+=e.results[i][0].transcript;
+        else interim+=e.results[i][0].transcript;
       }
-      if(!transcript.trim())return;
-      document.getElementById("hearingText").textContent=transcript.trim();
-      // words detected — scroll
-      clearTimeout(voice.pauseTimeout);
-      if(!isPlaying)playScript();
-      // pause 1.5s after last word
-      voice.pauseTimeout=setTimeout(()=>{if(isPlaying)pauseScript();},100);
+      const heard=(final||interim).trim();
+      if(!heard)return;
+      document.getElementById("hearingText").textContent=heard;
+      // only scroll if spoken words match script words
+      matchAndScroll(heard);
     };
     r.onend=()=>{
       // restart unless stopped intentionally
@@ -177,7 +214,7 @@ function stopRecording(){
 
 function playScript(){if(!isPlaying){isPlaying=!0;scrollInt=setInterval(()=>{scrollPos+=scrollSpeed;document.getElementById("scriptInput").scrollTop=scrollPos;},16);}}
 function pauseScript(){if(isPlaying){isPlaying=!1;clearInterval(scrollInt);}}
-function resetScript(){pauseScript();scrollPos=0;document.getElementById("scriptInput").scrollTop=0;}
+function resetScript(){pauseScript();scrollPos=0;currentWordIndex=0;document.getElementById("scriptInput").scrollTop=0;}
 const speeds=[
   {label:'Very Slow',value:0.5},
   {label:'Slow',value:1},
