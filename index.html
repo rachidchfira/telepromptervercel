@@ -99,7 +99,7 @@ async function startVoice(){
         isSpeaking=!1;
         clearTimeout(voice.startTimer);
         clearTimeout(voice.pauseTimer);
-        voice.pauseTimer=setTimeout(()=>{if(!isSpeaking&&isPlaying)pauseScript();},350);
+        voice.pauseTimer=setTimeout(()=>{if(!isSpeaking&&isPlaying)pauseScript();},150);
       }
       requestAnimationFrame(monitor);
     }
