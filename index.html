@@ -14,7 +14,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Script area ── */
 #scriptWrap{position:relative;margin-bottom:.4rem}
-#scriptInput,#scriptDisplay{
+#scriptInput{
   width:100%;height:60vh;padding:3rem 4rem;
   font-size:3rem;line-height:1.7;border-radius:15px;
   background:#000;color:#fff;border:3px solid #00d4ff;
@@ -22,10 +22,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 #scriptInput{resize:none;transition:color .3s,transform .3s}
 #scriptInput::placeholder{color:rgba(255,255,255,.2)}
-#scriptDisplay{
-  display:none;white-space:pre-wrap;word-wrap:break-word;
-  cursor:default;transition:color .3s,transform .3s;
+#scriptInput::selection{background:rgba(0,212,255,.55);color:#fff;text-shadow:0 0 8px rgba(0,212,255,.6)}
+#scriptInput::-moz-selection{background:rgba(0,212,255,.55);color:#fff;text-shadow:0 0 8px rgba(0,212,255,.6)}
+/* Brighter, more visible highlight while reading mode is active */
+#scriptInput.reading::selection{
+  background:linear-gradient(135deg,#00d4ff,#0099cc),#00d4ff;
+  background-color:#00d4ff;color:#000;
+  text-shadow:0 0 0 transparent;
 }
+#scriptInput.reading::-moz-selection{
+  background:#00d4ff;color:#000;text-shadow:0 0 0 transparent;
+}
+#scriptInput.reading{caret-color:transparent}
 .mirror{transform:scaleX(-1)}
 
 /* ── Reading line (fixed band at vertical center) ── */
@@ -45,11 +53,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   border-radius:2px;margin-bottom:.5rem;overflow:hidden;display:none;
 }
 #progressBar{height:100%;width:0%;background:#00d4ff;border-radius:2px;transition:width .1s linear}
-
-/* ── Word spans inside display div ── */
-.word{border-radius:5px;padding:0 2px;transition:background .08s,color .08s}
-.word.hl{background:rgba(0,212,255,.35);color:#fff;box-shadow:0 0 12px rgba(0,212,255,.4)}
-.annotation{color:rgba(255,255,255,.28);font-style:italic}
 
 /* ── Controls ── */
 .controls{display:flex;flex-wrap:wrap;gap:.35rem;margin:.5rem 0}
@@ -91,7 +94,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   body{padding:.4rem}
   .header h1{font-size:1.3rem}
   .header p{font-size:.72rem}
-  #scriptInput,#scriptDisplay{
+  #scriptInput{
     height:62vh;padding:1.2rem 1rem;font-size:1.8rem;line-height:1.6;border-width:2px
   }
   .btn{padding:.4rem .7rem;font-size:.72rem}
@@ -180,10 +183,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <p>Voice • Camera • Recording • Live Streaming</p>
   </div>
 
-  <!-- Script area: textarea (edit) + display div (read) + reading line overlay -->
+  <!-- Script area: one textarea for editing, reading, highlighting, and scrolling -->
   <div id="scriptWrap">
-    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Comments (dimmed, not read aloud):&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
-    <div id="scriptDisplay"></div>
+    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Comments skipped by voice follow:&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
     <div id="readingLine"></div>
   </div>
 
@@ -223,22 +225,24 @@ let cameraStream=null, mediaRecorder=null, recordedChunks=[], recordingStartTime
 let isMirror=false, textColor='#fff', fontSize='3rem';
 
 // Reading mode state
-let readingMode=false, wordSpans=[], scriptWords=[], highlightIdx=-1;
+let readingMode=false, scriptWords=[], highlightIdx=-1, measureBox=null;
 
 // Voice state
-const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null};
+const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
-const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
+const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300, VOICE_CONTEXT_WORDS=12;
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const ta   = document.getElementById('scriptInput');
-const disp = document.getElementById('scriptDisplay');
 const rl   = document.getElementById('readingLine');
 const pw   = document.getElementById('progressWrap');
 const pb   = document.getElementById('progressBar');
 
 // ── Persistence ───────────────────────────────────────────────────────────────
-ta.addEventListener('input',()=>localStorage.setItem('tp-script',ta.value));
+ta.addEventListener('input',()=>{
+  localStorage.setItem('tp-script',ta.value);
+  if(readingMode) buildWordIndex();
+});
 window.addEventListener('load',()=>{
   const s=localStorage.getItem('tp-script');
   if(s) ta.value=s;
@@ -256,9 +260,9 @@ window.addEventListener('load',()=>{
 function enterReadingMode(){
   if(readingMode) return;
   readingMode=true;
-  buildDisplay();
-  ta.style.display='none';
-  disp.style.display='block';
+  buildWordIndex();
+  ta.readOnly=true;
+  ta.classList.add('reading');
   rl.style.display='block';
   pw.style.display='block';
   highlightIdx=-1;
@@ -266,93 +270,110 @@ function enterReadingMode(){
 function exitReadingMode(){
   if(!readingMode) return;
   readingMode=false;
-  ta.style.display='block';
-  disp.style.display='none';
+  ta.readOnly=false;
+  ta.classList.remove('reading');
   rl.style.display='none';
   pw.style.display='none';
   pb.style.width='0%';
+  clearWordHighlight();
 }
 
-// ── Build word-span display ───────────────────────────────────────────────────
-function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ── Build exact word index from the textarea ──────────────────────────────────
+function normalizeWord(text){
+  return text.toLowerCase().replace(/[^a-z0-9]/g,'');
+}
 
-function buildDisplay(){
+function buildWordIndex(){
   const text=ta.value;
   scriptWords=[];
-  let html='', wordIdx=0;
-
-  // Process line by line so // comments are handled at line level
+  let offset=0;
   const lines=text.split('\n');
-  lines.forEach((line, li)=>{
-    if(line.trim().startsWith('//')){
-      // Whole line is a comment — show dimmed, never highlight
-      html+=`<span class="annotation">${esc(line)}</span>`;
-    }else{
-      // Tokenize: [annotations], (parentheticals), words, whitespace
-      const regex=/(\[[^\]]*\]|\([^)]*\)|\S+|[ \t]+)/g;
-      let m;
-      while((m=regex.exec(line))!==null){
-        const tok=m[0];
-        if(/^[ \t]+$/.test(tok)){
-          html+=tok.replace(/ /g,'&nbsp;');
-        }else if(/^\[.*\]$/.test(tok)||/^\(.*\)$/.test(tok)){
-          // [bracket] or (parenthetical) → annotation, not read aloud
-          html+=`<span class="annotation">${esc(tok)}</span>`;
-        }else{
-          const clean=tok.replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
-          if(clean){
-            html+=`<span class="word" data-i="${wordIdx}">${esc(tok)}</span>`;
-            scriptWords.push(clean);
-            wordIdx++;
-          }else{
-            html+=esc(tok); // punctuation-only token, not a word
-          }
+  lines.forEach(line=>{
+    if(!line.trim().startsWith('//')){
+      const regex=/\[[^\]]*\]|\([^)]*\)|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g;
+      let match;
+      while((match=regex.exec(line))!==null){
+        const token=match[0];
+        if(token[0]==='[' || token[0]==='(') continue;
+        const word=normalizeWord(token);
+        if(word){
+          scriptWords.push({
+            word,
+            start:offset+match.index,
+            end:offset+match.index+token.length
+          });
         }
       }
     }
-    if(li<lines.length-1) html+='<br>';
+    offset+=line.length+1;
   });
-
-  disp.innerHTML=html;
-  wordSpans=Array.from(disp.querySelectorAll('.word'));
-  disp.style.fontSize=fontSize;
-  disp.style.color=textColor;
-  if(isMirror) disp.classList.add('mirror'); else disp.classList.remove('mirror');
 }
 
 // ── Word highlighting ─────────────────────────────────────────────────────────
 function highlightWord(idx, scrollToIt=true){
-  if(idx===highlightIdx) return;
-  if(highlightIdx>=0 && wordSpans[highlightIdx])
-    wordSpans[highlightIdx].classList.remove('hl');
+  if(idx===highlightIdx && idx>=0) return;
   highlightIdx=idx;
-  if(idx<0 || !wordSpans[idx]) return;
-  wordSpans[idx].classList.add('hl');
-  if(scrollToIt){
-    const el=wordSpans[idx];
-    const target=Math.max(0, el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2);
-    disp.scrollTo({top:target, behavior:'smooth'});
-    scrollPos=target; // keep scrollPos in sync so Play mode doesn't jump back
-  }
+  const word=scriptWords[idx];
+  if(idx<0 || !word) return;
+  try{ta.focus({preventScroll:true});}catch(e){ta.focus();}
+  ta.setSelectionRange(word.start, word.end);
+  if(scrollToIt) scrollToWord(idx);
 }
 
-// Update highlight to whichever word is currently at the reading line (used in Play mode)
-function syncHighlightToScroll(){
-  if(!wordSpans.length) return;
-  const center=disp.scrollTop + disp.clientHeight/2;
-  let best=-1, bestDist=Infinity;
-  wordSpans.forEach((el,i)=>{
-    const mid=el.offsetTop+el.offsetHeight/2;
-    const d=Math.abs(mid-center);
-    if(d<bestDist){bestDist=d;best=i;}
-  });
-  if(best!==highlightIdx) highlightWord(best, false);
+function clearWordHighlight(){
+  if(document.activeElement===ta){
+    const pos=ta.selectionEnd;
+    ta.setSelectionRange(pos,pos);
+  }
+  highlightIdx=-1;
+}
+
+function esc(t){
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function syncMeasureBox(){
+  if(!measureBox){
+    measureBox=document.createElement('div');
+    document.body.appendChild(measureBox);
+  }
+  const cs=getComputedStyle(ta);
+  measureBox.style.cssText=`
+    position:absolute;
+    visibility:hidden;
+    pointer-events:none;
+    left:-9999px;
+    top:0;
+    width:${ta.offsetWidth}px;
+    min-height:0;
+    white-space:pre-wrap;
+    overflow-wrap:break-word;
+    word-wrap:break-word;
+    box-sizing:${cs.boxSizing};
+    padding:${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft};
+    border:${cs.borderTopWidth} solid transparent;
+    font:${cs.font};
+    line-height:${cs.lineHeight};
+    letter-spacing:${cs.letterSpacing};
+  `;
+}
+
+function scrollToWord(idx){
+  const word=scriptWords[idx];
+  if(!word) return;
+  syncMeasureBox();
+  measureBox.innerHTML=`${esc(ta.value.slice(0,word.start))}<span id="wordMeasureMarker">${esc(ta.value.slice(word.start,word.end))}</span>${esc(ta.value.slice(word.end))}`;
+  const marker=document.getElementById('wordMeasureMarker');
+  if(!marker) return;
+  const target=Math.max(0,marker.offsetTop-ta.clientHeight/2+marker.offsetHeight/2);
+  ta.scrollTo({top:target,behavior:'smooth'});
+  scrollPos=target;
 }
 
 // Update progress bar
 function updateProgress(){
-  const max=disp.scrollHeight-disp.clientHeight;
-  pb.style.width=(max>0 ? disp.scrollTop/max*100 : 0)+'%';
+  const max=ta.scrollHeight-ta.clientHeight;
+  pb.style.width=(max>0 ? ta.scrollTop/max*100 : 0)+'%';
 }
 
 // ── Scrolling ─────────────────────────────────────────────────────────────────
@@ -360,11 +381,13 @@ function playScript(){
   if(isPlaying) return;
   enterReadingMode();
   isPlaying=true;
+  scrollPos=ta.scrollTop;
   scrollInt=setInterval(()=>{
-    scrollPos+=scrollSpeed;
-    disp.scrollTop=scrollPos;
-    syncHighlightToScroll();
+    const max=Math.max(0,ta.scrollHeight-ta.clientHeight);
+    scrollPos=Math.min(max,scrollPos+scrollSpeed);
+    ta.scrollTop=scrollPos;
     updateProgress();
+    if(scrollPos>=max) pauseScript();
   },16);
 }
 function pauseScript(){
@@ -375,6 +398,8 @@ function pauseScript(){
 function resetScript(){
   pauseScript();
   scrollPos=0;
+  ta.scrollTop=0;
+  ta.setSelectionRange(0,0);
   highlightIdx=-1;
   lastWordTime=0;
   voiceSpeaking=false;
@@ -382,39 +407,46 @@ function resetScript(){
   exitReadingMode();
 }
 
-// ── Fuzzy word matching (from textream algorithm) ─────────────────────────────
-function fuzzyMatch(a,b){
-  if(!a||!b) return false;
-  if(a===b) return true;
-  if(a.startsWith(b)||b.startsWith(a)) return true;
-  const shorter=Math.min(a.length,b.length);
-  let shared=0; for(let i=0;i<shorter;i++) if(a[i]===b[i]) shared++;
-  return shorter>=3 && shared>=Math.ceil(shorter*0.6);
-}
-
 function matchSpoken(transcript){
-  const words=transcript.toLowerCase()
-    .replace(/[^a-zA-Z0-9\s]/g,'')
-    .split(/\s+/)
-    .filter(w=>w.length>1);
+  const words=(transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
+    .map(normalizeWord)
+    .filter(Boolean)
+    .slice(-VOICE_CONTEXT_WORDS);
   if(!words.length) return;
 
-  // SR builds up transcripts incrementally: "hello" → "hello world" → "hello world how"
-  // The last word is always the most recently spoken one. Match only that.
-  // Window of 5 lets us skip short words (I, a) and handle slight SR reordering
-  // without jumping across lines.
-  const spoken=words[words.length-1];
-  const pos=Math.max(0, highlightIdx);
-  const limit=Math.min(pos+5, scriptWords.length);
-  for(let i=pos;i<limit;i++){
-    if(fuzzyMatch(scriptWords[i], spoken)){
-      if(i!==highlightIdx){
-        highlightWord(i, true);
-        updateProgress();
+  const expected=Math.max(0,highlightIdx+1);
+  const searchStart=Math.max(0,expected-6);
+  const searchEnd=Math.min(scriptWords.length,expected+45);
+  let best=null;
+
+  // Align the recognizer's latest phrase to the script using exact normalized words.
+  // Longer phrase matches win, which keeps repeated words from pulling the prompt backward.
+  for(let scriptStart=searchStart;scriptStart<searchEnd;scriptStart++){
+    for(let spokenStart=0;spokenStart<words.length;spokenStart++){
+      let len=0;
+      while(
+        scriptStart+len<scriptWords.length &&
+        spokenStart+len<words.length &&
+        scriptWords[scriptStart+len].word===words[spokenStart+len]
+      ) len++;
+
+      if(len && spokenStart+len===words.length){
+        const idx=scriptStart+len-1;
+        const score=len*100-Math.abs(idx-expected);
+        if(!best || score>best.score || (score===best.score && idx>=highlightIdx && idx<best.idx)){
+          best={idx,score};
+        }
       }
-      break;
     }
   }
+
+  if(!best) return false;
+  voice.lastMatchOk=true;
+  if(best.idx!==highlightIdx){
+    highlightWord(best.idx,true);
+    updateProgress();
+  }
+  return true;
 }
 
 // ── Speed modal ───────────────────────────────────────────────────────────────
@@ -438,21 +470,18 @@ function setSpeed(v){
 function setFontSize(size,id){
   fontSize=size;
   ta.style.fontSize=size;
-  disp.style.fontSize=size;
   ['sm','md','lg','xl'].forEach(i=>document.getElementById('fs-'+i).classList.remove('active'));
   document.getElementById('fs-'+id).classList.add('active');
 }
 function setColor(hex,el){
   textColor=hex;
   ta.style.color=hex;
-  disp.style.color=hex;
   document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
   el.classList.add('selected');
 }
 function toggleMirror(){
   isMirror=!isMirror;
   ta.classList.toggle('mirror',isMirror);
-  disp.classList.toggle('mirror',isMirror);
   document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
 }
 
@@ -463,6 +492,7 @@ async function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert('❌ Voice requires Chrome or Edge.');return;}
   try{
+    pauseScript();
     voice.stream=await navigator.mediaDevices.getUserMedia(
       {audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
 
@@ -480,18 +510,25 @@ async function startVoice(){
     voice.recognition.lang='en-US';
     voice.recognition.onresult=(e)=>{
       let t='';
-      for(let i=e.resultIndex;i<e.results.length;i++) t+=e.results[i][0].transcript;
+      for(let i=0;i<e.results.length;i++) t+=' '+e.results[i][0].transcript;
       if(!t.trim()) return;
       lastWordTime=Date.now();
-      if(readingMode) matchSpoken(t);
+      if(readingMode){
+        voice.lastMatchOk=matchSpoken(t) !== false;
+      }
     };
-    voice.recognition.onend=()=>{if(voice.active) voice.recognition.start();};
+    voice.recognition.onend=()=>{
+      if(voice.active){
+        try{voice.recognition.start();}catch(e){}
+      }
+    };
     voice.recognition.onerror=(e)=>{
       if(e.error==='not-allowed'){alert('❌ Mic permission denied.');stopVoice();}
     };
     voice.recognition.start();
 
     voice.active=true; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
+    voice.lastSoundAt=0; voice.lastMatchOk=true;
     enterReadingMode();
 
     document.getElementById('voiceStatus').textContent='ON';
@@ -508,6 +545,7 @@ async function startVoice(){
       audioLevels.push(rms);
       if(audioLevels.length>10) audioLevels.shift();
       const avg=audioLevels.reduce((a,b)=>a+b,0)/audioLevels.length;
+      if(avg>RMS_THRESHOLD) voice.lastSoundAt=Date.now();
 
       // Visual bar
       const pct=Math.min(100,avg*800);
@@ -516,13 +554,15 @@ async function startVoice(){
 
       // Gate: RMS high AND SR detected real words recently
       const recentWords=(Date.now()-lastWordTime)<WORD_GATE_MS;
-      const speaking=avg>RMS_THRESHOLD && recentWords;
+      const recentSound=(Date.now()-voice.lastSoundAt)<STOP_DELAY_MS;
+      const speaking=recentSound && recentWords;
 
       document.getElementById('voiceLabel').textContent=speaking?'🟢 reading':'⚫ silent';
       document.getElementById('voiceHint').textContent=
-        avg>RMS_THRESHOLD && !recentWords ? '(say a script word to start)' : '';
+        avg>RMS_THRESHOLD && !recentWords ? '(say a script word to start)' :
+        recentWords && !voice.lastMatchOk ? '(waiting for exact script word)' : '';
 
-      // voiceSpeaking only gates whether SR word matches trigger scrolling
+      // Keep the status label tied to real speech so silence never auto-scrolls.
       if(speaking && !voiceSpeaking){
         voiceSpeaking=true;
       }else if(!speaking && voiceSpeaking){
@@ -540,7 +580,7 @@ function stopVoice(){
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; audioLevels=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastMatchOk=true; audioLevels=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
