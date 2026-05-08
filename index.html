@@ -196,6 +196,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div id="voiceBar">
     <span id="voiceLabel">⚫ silent</span>
     <div id="levelWrap"><div id="levelBar"></div></div>
+    <span id="voiceHeard" style="font-size:.7rem;opacity:.85;color:#fff;font-style:italic;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     <span id="voiceHint" style="font-size:.7rem;opacity:.7"></span>
   </div>
 
@@ -408,35 +409,42 @@ function resetScript(){
 }
 
 function matchSpoken(transcript){
-  const words=(transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
+  if(!scriptWords.length) return false;
+  const allWords=(transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
     .map(normalizeWord)
-    .filter(Boolean)
-    .slice(-VOICE_CONTEXT_WORDS);
-  if(!words.length) return;
+    .filter(Boolean);
+  if(!allWords.length) return false;
 
+  const words=allWords.slice(-VOICE_CONTEXT_WORDS);
+
+  // Show what we heard so the user can see SR is alive
+  const heardEl=document.getElementById('voiceHeard');
+  if(heardEl) heardEl.textContent=words.slice(-6).join(' ');
+
+  // Search a wide window around the current position
   const expected=Math.max(0,highlightIdx+1);
-  const searchStart=Math.max(0,expected-6);
-  const searchEnd=Math.min(scriptWords.length,expected+45);
+  const searchStart=Math.max(0,expected-10);
+  const searchEnd=Math.min(scriptWords.length,expected+80);
+
   let best=null;
 
-  // Align the recognizer's latest phrase to the script using exact normalized words.
-  // Longer phrase matches win, which keeps repeated words from pulling the prompt backward.
-  for(let scriptStart=searchStart;scriptStart<searchEnd;scriptStart++){
-    for(let spokenStart=0;spokenStart<words.length;spokenStart++){
+  for(let s=searchStart;s<searchEnd;s++){
+    for(let p=0;p<words.length;p++){
       let len=0;
-      while(
-        scriptStart+len<scriptWords.length &&
-        spokenStart+len<words.length &&
-        scriptWords[scriptStart+len].word===words[spokenStart+len]
-      ) len++;
+      while(s+len<scriptWords.length && p+len<words.length &&
+            scriptWords[s+len].word===words[p+len]) len++;
+      if(!len) continue;
 
-      if(len && spokenStart+len===words.length){
-        const idx=scriptStart+len-1;
-        const score=len*100-Math.abs(idx-expected);
-        if(!best || score>best.score || (score===best.score && idx>=highlightIdx && idx<best.idx)){
-          best={idx,score};
-        }
-      }
+      const idx=s+len-1;
+      // Recency: 1.0 if the run ends at the most recent spoken word, lower otherwise
+      const recency=(p+len)/words.length;
+      // Hard rule: a single-word match that goes BACKWARD is almost always a false positive.
+      // Multi-word backward jumps are allowed (user repeated a phrase).
+      if(len===1 && idx<highlightIdx) continue;
+      // Strong forward bias
+      const forward=idx>=highlightIdx?80:-120;
+      const score=len*250+recency*120+forward-Math.abs(idx-expected);
+      if(!best||score>best.score) best={idx,score,len};
     }
   }
 
@@ -491,6 +499,7 @@ function toggleVoice(){voice.active?stopVoice():startVoice();}
 async function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert('❌ Voice requires Chrome or Edge.');return;}
+  if(!ta.value.trim()){alert('Type or paste a script first — voice control needs words to follow.');return;}
   try{
     pauseScript();
     voice.stream=await navigator.mediaDevices.getUserMedia(
@@ -585,6 +594,8 @@ function stopVoice(){
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
   document.getElementById('voiceBar').classList.remove('on');
+  const heardEl=document.getElementById('voiceHeard');
+  if(heardEl) heardEl.textContent='';
   exitReadingMode();
 }
 
