@@ -451,18 +451,22 @@ let currentLine=-1, currentPara=-1;
 let lastScrollAt=0;   // throttle scrollIntoView
 
 // Voice state
-const voice={active:false,ready:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastTranscript:'',lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:'',noiseFloor:0.015};
+const voice={active:false,ready:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastTranscript:'',lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:'',noiseFloor:0.015,stableHits:0,lockedUntil:0,lastAcceptedAt:0,lastAcceptedIdx:-1};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
 const RMS_THRESHOLD=0.025, WORD_GATE_MS=1200, STOP_DELAY_MS=220;
 const VOICE_CONTEXT_WORDS=10;     // recent SR words used for phrase alignment
 const SIM_THRESHOLD=0.62;         // dice similarity needed to count as a fuzzy word match
 const LOOK_AHEAD=18;              // normal search window past cursor
+const LOCKED_LOOK_AHEAD=8;        // tight local window once phrase lock is stable
 const RECOVER_LOOK_AHEAD=100;     // jump-ahead search when the speaker skips forward
+const LOCKED_RECOVER_LOOK_AHEAD=45;
 const BACKTRACK_LOOK_BEHIND=80;   // backward search when the reader corrects after a bad jump
 const BACKTRACK_NEAR_WORDS=24;    // allow two-word backtracks only when the target is nearby
 const MIN_ADVANCE_CONF=0.78;      // local alignment must clear this to move
 const MIN_RECOVER_CONF=0.9;       // recover mode must be very confident
+const MIN_LOCKED_RECOVER_CONF=0.96;
 const MIN_BACKTRACK_CONF=0.92;    // backward moves need phrase-level confidence
+const PHRASE_LOCK_MS=1400;
 const SCROLL_THROTTLE_MS=90;      // limit scroll calls to be smooth
 const MATCH_CLASSES=['match-exact','match-phrase','match-fuzzy','match-recover','match-backtrack','match-manual','match-auto','conf-high','conf-med','conf-low'];
 
@@ -725,6 +729,10 @@ function enterReadingMode(){
   voice.lastSpokenWord='';
   voice.lastConfidence=0;
   voice.lastMode='';
+  voice.stableHits=0;
+  voice.lockedUntil=0;
+  voice.lastAcceptedAt=0;
+  voice.lastAcceptedIdx=-1;
 }
 function exitReadingMode(){
   if(!readingMode) return;
@@ -908,6 +916,10 @@ function jumpToWord(idx){
   voice.lastConfidence=1;
   voice.lastMode='manual';
   voice.lastSpokenWord=scriptWords[next]?scriptWords[next].clean:'';
+  voice.stableHits=0;
+  voice.lockedUntil=0;
+  voice.lastAcceptedAt=Date.now();
+  voice.lastAcceptedIdx=next;
   updateVoiceMatch({confidence:1,mode:'manual'});
   setCursor(next,true,{mode:'manual',confidence:1});
   scrollPos=disp.scrollTop;
@@ -1015,6 +1027,10 @@ function resetScript(){
   voice.lastSpokenWord='';
   voice.lastConfidence=0;
   voice.lastMode='';
+  voice.stableHits=0;
+  voice.lockedUntil=0;
+  voice.lastAcceptedAt=0;
+  voice.lastAcceptedIdx=-1;
   updateVoiceMatch(null);
   lastWordTime=0;
   voiceSpeaking=false;
@@ -1244,9 +1260,13 @@ function findFuzzyWordAlignment(words,searchStart,searchEnd,expected){
 function alignSpokenWords(words){
   const expected=cursor<0 ? 0 : Math.min(scriptWords.length-1,cursor+1);
   const localStart=Math.max(0,cursor<0?0:cursor);
-  const localEnd=Math.min(scriptWords.length-1,expected+LOOK_AHEAD);
+  const locked=isVoiceLocked();
+  const localLookAhead=locked?LOCKED_LOOK_AHEAD:LOOK_AHEAD;
+  const recoverLookAhead=locked?LOCKED_RECOVER_LOOK_AHEAD:RECOVER_LOOK_AHEAD;
+  const recoverThreshold=locked?MIN_LOCKED_RECOVER_CONF:MIN_RECOVER_CONF;
+  const localEnd=Math.min(scriptWords.length-1,expected+localLookAhead);
   const recoverStart=Math.min(scriptWords.length-1,localEnd+1);
-  const recoverEnd=Math.min(scriptWords.length-1,expected+RECOVER_LOOK_AHEAD);
+  const recoverEnd=Math.min(scriptWords.length-1,expected+recoverLookAhead);
 
   const exactPhrase=findExactAlignment(words,localStart,localEnd,expected,false,false,false);
   if(exactPhrase && exactPhrase.confidence>=MIN_ADVANCE_CONF) return exactPhrase;
@@ -1265,10 +1285,10 @@ function alignSpokenWords(words){
 
   if(recoverEnd-recoverStart>=2){
     const recoverExact=findExactAlignment(words,recoverStart,recoverEnd,expected,true);
-    if(recoverExact && recoverExact.confidence>=MIN_RECOVER_CONF) return recoverExact;
+    if(recoverExact && recoverExact.confidence>=recoverThreshold && (!locked || recoverExact.len>=3)) return recoverExact;
 
     const recoverPhrase=findPhraseAlignment(words,recoverStart,recoverEnd,expected,true);
-    if(recoverPhrase && recoverPhrase.confidence>=MIN_RECOVER_CONF) return recoverPhrase;
+    if(recoverPhrase && recoverPhrase.confidence>=recoverThreshold && (!locked || recoverPhrase.len>=3)) return recoverPhrase;
   }
 
   return null;
@@ -1310,6 +1330,7 @@ function applySpokenAlignment(alignment){
   voice.lastConfidence=alignment.confidence;
   voice.lastMode=alignment.mode;
   voice.lastSpokenWord=alignment.words[alignment.words.length-1];
+  updateVoiceStability(alignment);
   updateVoiceMatch(alignment);
   setCursor(alignment.idx,true,alignment);
   return true;
@@ -1320,6 +1341,7 @@ function matchSpokenCandidates(candidates){
   if(!best){
     voice.lastConfidence=0;
     voice.lastMode='';
+    voice.stableHits=Math.max(0,(voice.stableHits||0)-1);
     updateVoiceMatch(null);
     return false;
   }
@@ -1328,6 +1350,44 @@ function matchSpokenCandidates(candidates){
 
 function matchSpoken(transcript){
   return matchSpokenCandidates([{text:transcript,confidence:1}]);
+}
+
+function isVoiceLocked(){
+  return !!voice.lockedUntil && Date.now()<voice.lockedUntil;
+}
+
+function updateVoiceStability(alignment){
+  const mode=alignment.mode||'';
+  const phraseMode=mode==='exactPhrase'||mode==='phrase';
+  if(phraseMode && alignment.len>=2 && alignment.confidence>=0.9){
+    voice.stableHits=Math.min(4,(voice.stableHits||0)+1);
+  }else if(mode==='exactWord'||mode==='fuzzy'){
+    voice.stableHits=Math.max(0,(voice.stableHits||0)-1);
+  }else if(mode.startsWith('recover')||mode.startsWith('backtrack')){
+    voice.stableHits=1;
+  }else if(mode==='manual'){
+    voice.stableHits=0;
+  }
+
+  if(mode==='manual'){
+    voice.lockedUntil=0;
+  }else if(mode.startsWith('recover')||mode.startsWith('backtrack')){
+    voice.lockedUntil=Date.now()+700;
+  }else if((voice.stableHits||0)>=2 || alignment.len>=3){
+    voice.lockedUntil=Date.now()+PHRASE_LOCK_MS;
+  }
+
+  voice.lastAcceptedAt=Date.now();
+  voice.lastAcceptedIdx=alignment.idx;
+}
+
+function voiceStatusHint(soundNow,recentWords,speaking){
+  if(soundNow && !recentWords) return '(say a script word to start)';
+  if(recentWords && !voice.lastMatchOk) return isVoiceLocked()?'(holding phrase lock)':'(listening for a credible match)';
+  if(speaking && voice.lastMode && voice.lastMode.startsWith('recover')) return '(recovering)';
+  if(speaking && voice.lastMode && voice.lastMode.startsWith('backtrack')) return '(backtracking)';
+  if(speaking && isVoiceLocked()) return '(locked on phrase)';
+  return '';
 }
 
 // ── Speed modal ───────────────────────────────────────────────────────────────
@@ -1467,7 +1527,7 @@ async function startVoice(){
     };
 
     voice.active=true; voice.ready=false; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
-    voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; voice.noiseFloor=0.015;
+    voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; voice.noiseFloor=0.015; voice.stableHits=0; voice.lockedUntil=0; voice.lastAcceptedAt=0; voice.lastAcceptedIdx=-1;
     enterReadingMode();
 
     document.getElementById('voiceStatus').textContent='ON';
@@ -1502,9 +1562,7 @@ async function startVoice(){
       const speaking=recentSound && recentWords;
 
       document.getElementById('voiceLabel').textContent=speaking?'🟢 reading':'⚫ silent';
-      document.getElementById('voiceHint').textContent=
-        soundNow && !recentWords ? '(say a script word to start)' :
-        recentWords && !voice.lastMatchOk ? '(listening for a credible match)' : '';
+      document.getElementById('voiceHint').textContent=voiceStatusHint(soundNow,recentWords,speaking);
 
       // Keep the status label tied to real speech so silence never auto-scrolls.
       if(speaking && !voiceSpeaking){
@@ -1536,7 +1594,7 @@ function stopVoice(){
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; audioLevels=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; voice.stableHits=0; voice.lockedUntil=0; voice.lastAcceptedAt=0; voice.lastAcceptedIdx=-1; audioLevels=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
