@@ -40,6 +40,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   background:#7ee8ff;color:#001014;
   box-shadow:0 0 0 2px rgba(255,255,255,.18),0 0 28px rgba(0,212,255,.62);
 }
+#scriptDisplay .w.current.conf-high{background:#91f7c5;color:#00140a}
+#scriptDisplay .w.current.conf-med{background:#7ee8ff;color:#001014}
+#scriptDisplay .w.current.conf-low{background:#ffd166;color:#160d00}
+#scriptDisplay .w.current.match-recover{box-shadow:0 0 0 2px rgba(255,209,102,.3),0 0 28px rgba(255,209,102,.55)}
+#scriptDisplay .w.current.match-fuzzy{box-shadow:0 0 0 2px rgba(126,232,255,.24),0 0 18px rgba(126,232,255,.45)}
 #scriptDisplay.mode-line .w.spoken{color:rgba(255,255,255,.55)}
 #scriptDisplay.mode-line .line.current-line{background:rgba(0,212,255,.13);box-shadow:inset 4px 0 #7ee8ff}
 #scriptDisplay.mode-line .w.current{background:transparent;color:inherit;box-shadow:0 2px 0 #7ee8ff;border-radius:0}
@@ -367,13 +372,15 @@ let scriptWords=[];   // [{clean, raw}]
 let wordSpans=[];     // <span class="w"> elements
 let lineSpans=[];     // rendered line wrappers
 let paraSpans=[];     // rendered paragraph wrappers
+let lineSpanByIndex=[], paraSpanByIndex=[];
 let cursor=-1;        // index of the currently highlighted word
+let currentLine=-1, currentPara=-1;
 let lastScrollAt=0;   // throttle scrollIntoView
 
 // Voice state
-const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:''};
+const voice={active:false,ready:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastTranscript:'',lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:'',noiseFloor:0.015};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
-const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
+const RMS_THRESHOLD=0.025, WORD_GATE_MS=1200, STOP_DELAY_MS=220;
 const VOICE_CONTEXT_WORDS=10;     // recent SR words used for phrase alignment
 const SIM_THRESHOLD=0.62;         // dice similarity needed to count as a fuzzy word match
 const LOOK_AHEAD=18;              // normal search window past cursor
@@ -381,6 +388,7 @@ const RECOVER_LOOK_AHEAD=100;     // jump-ahead search when the speaker skips fo
 const MIN_ADVANCE_CONF=0.78;      // local alignment must clear this to move
 const MIN_RECOVER_CONF=0.9;       // recover mode must be very confident
 const SCROLL_THROTTLE_MS=90;      // limit scroll calls to be smooth
+const MATCH_CLASSES=['match-exact','match-phrase','match-fuzzy','match-recover','match-auto','conf-high','conf-med','conf-low'];
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const ta   = document.getElementById('scriptInput');
@@ -626,6 +634,8 @@ function enterReadingMode(){
   if(readingMode) return;
   readingMode=true;
   cursor=-1;
+  currentLine=-1;
+  currentPara=-1;
   lastScrollAt=0;
   buildDisplay();
   ta.style.display='none';
@@ -649,26 +659,35 @@ function exitReadingMode(){
   pb.style.width='0%';
   clearAllWordClasses();
   cursor=-1;
+  currentLine=-1;
+  currentPara=-1;
 }
 
 function clearAllWordClasses(){
   for(const s of wordSpans){
     s.classList.remove('spoken');
     s.classList.remove('current');
+    s.classList.remove(...MATCH_CLASSES);
   }
   for(const l of lineSpans) l.classList.remove('current-line');
   for(const p of paraSpans) p.classList.remove('current-para');
+  currentLine=-1;
+  currentPara=-1;
 }
 
 // ── Build per-word display ────────────────────────────────────────────────────
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function normalizeWord(text){return text.toLowerCase().replace(/[^a-z0-9]/g,'');}
+function normalizeWord(text){
+  return text.toLowerCase().normalize('NFKD').replace(/\p{M}/gu,'').replace(/[^\p{L}\p{N}]/gu,'');
+}
 
 function buildDisplay(){
   const text=ta.value;
   scriptWords=[];
   lineSpans=[];
   paraSpans=[];
+  lineSpanByIndex=[];
+  paraSpanByIndex=[];
   let html='';
   let wIdx=0;
   let lineIdx=0;
@@ -703,13 +722,13 @@ function buildDisplay(){
       html+=`<span class="cmt">${esc(line)}</span>`;
     } else {
       // Tokenize: bracketed/parenthetical (skipped), words, everything else passes through
-      const regex=/\[[^\]]*\]|\([^)]*\)|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[^\[\(A-Za-z0-9]+|./g;
+      const regex=/\[[^\]]*\]|\([^)]*\)|[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?|[^\[\(\p{L}\p{N}]+|./gu;
       let m;
       while((m=regex.exec(line))!==null){
         const tok=m[0];
         if(tok[0]==='[' || tok[0]==='('){
           html+=`<span class="ann">${esc(tok)}</span>`;
-        } else if(/^[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?$/.test(tok)){
+        } else if(/^[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?$/u.test(tok)){
           const clean=normalizeWord(tok);
           if(clean){
             html+=`<span class="w" data-i="${wIdx}" data-line="${lineIdx}" data-para="${paraIdx}">${esc(tok)}</span>`;
@@ -731,6 +750,8 @@ function buildDisplay(){
   wordSpans=Array.from(disp.querySelectorAll('.w'));
   lineSpans=Array.from(disp.querySelectorAll('.line'));
   paraSpans=Array.from(disp.querySelectorAll('.para'));
+  for(const l of lineSpans) lineSpanByIndex[Number(l.dataset.line)]=l;
+  for(const p of paraSpans) paraSpanByIndex[Number(p.dataset.para)]=p;
   disp.style.fontSize=fontSize;
   disp.style.color=textColor;
   if(isMirror) disp.classList.add('mirror'); else disp.classList.remove('mirror');
@@ -743,7 +764,7 @@ function applyFocusMode(){
 }
 
 // ── Cursor + scroll ───────────────────────────────────────────────────────────
-function setCursor(idx, smooth=true){
+function setCursor(idx, smooth=true, match=null){
   if(!wordSpans.length) return;
   idx=Math.max(0, Math.min(wordSpans.length-1, idx));
 
@@ -759,9 +780,11 @@ function setCursor(idx, smooth=true){
 
   if(cursor>=0 && cursor!==idx && wordSpans[cursor]){
     wordSpans[cursor].classList.remove('current');
+    wordSpans[cursor].classList.remove(...MATCH_CLASSES);
   }
   wordSpans[idx].classList.remove('spoken');
   wordSpans[idx].classList.add('current');
+  applyMatchClasses(wordSpans[idx],match);
   updateFocusClasses(idx);
   cursor=idx;
 
@@ -775,11 +798,36 @@ function setCursor(idx, smooth=true){
   updateProgress();
 }
 
+function applyMatchClasses(el,match){
+  if(!el) return;
+  el.classList.remove(...MATCH_CLASSES);
+  const mode=match&&match.mode?match.mode:'auto';
+  const conf=match&&typeof match.confidence==='number'?match.confidence:1;
+  if(mode.startsWith('recover')) el.classList.add('match-recover');
+  else if(mode==='fuzzy') el.classList.add('match-fuzzy');
+  else if(mode==='phrase') el.classList.add('match-phrase');
+  else if(mode==='auto') el.classList.add('match-auto');
+  else el.classList.add('match-exact');
+  el.classList.add(conf>=0.94?'conf-high':(conf>=0.84?'conf-med':'conf-low'));
+}
+
 function updateFocusClasses(idx){
   const meta=scriptWords[idx];
   if(!meta) return;
-  for(const l of lineSpans) l.classList.toggle('current-line', Number(l.dataset.line)===meta.line);
-  for(const p of paraSpans) p.classList.toggle('current-para', Number(p.dataset.para)===meta.para);
+  if(meta.line!==currentLine){
+    const oldLine=lineSpanByIndex[currentLine];
+    const newLine=lineSpanByIndex[meta.line];
+    if(oldLine) oldLine.classList.remove('current-line');
+    if(newLine) newLine.classList.add('current-line');
+    currentLine=meta.line;
+  }
+  if(meta.para!==currentPara){
+    const oldPara=paraSpanByIndex[currentPara];
+    const newPara=paraSpanByIndex[meta.para];
+    if(oldPara) oldPara.classList.remove('current-para');
+    if(newPara) newPara.classList.add('current-para');
+    currentPara=meta.para;
+  }
 }
 
 function keepCursorCentered(idx,smooth=true){
@@ -801,14 +849,21 @@ function keepCursorCentered(idx,smooth=true){
 function syncCursorToScroll(){
   if(!wordSpans.length) return;
   const center=disp.scrollTop+disp.clientHeight/2;
-  let best=0, bestDist=Infinity;
-  for(let i=0;i<wordSpans.length;i++){
+  let low=0, high=wordSpans.length-1, best=Math.max(0,cursor), bestDist=Infinity;
+  while(low<=high){
+    const midIndex=(low+high)>>1;
+    const el=wordSpans[midIndex];
+    const pos=el.offsetTop+el.offsetHeight/2;
+    if(pos<center) low=midIndex+1; else high=midIndex-1;
+  }
+  const start=Math.max(0,low-3), end=Math.min(wordSpans.length-1,low+3);
+  for(let i=start;i<=end;i++){
     const el=wordSpans[i];
-    const mid=el.offsetTop+el.offsetHeight/2;
-    const dist=Math.abs(mid-center);
+    const pos=el.offsetTop+el.offsetHeight/2;
+    const dist=Math.abs(pos-center);
     if(dist<bestDist){best=i;bestDist=dist;}
   }
-  setCursor(best,false);
+  setCursor(best,false,{mode:'auto',confidence:1});
 }
 
 // Update progress bar
@@ -923,7 +978,7 @@ function wordSimilarity(scriptWord,spokenWord){
 }
 
 function getSpokenWords(transcript){
-  return (transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
+  return (transcript.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?/gu)||[])
     .map(normalizeWord)
     .filter(Boolean)
     .slice(-VOICE_CONTEXT_WORDS);
@@ -1087,29 +1142,49 @@ function updateVoiceMatch(alignment){
   el.textContent=`${Math.round(alignment.confidence*100)}% ${label}`;
 }
 
-function matchSpoken(transcript){
+function chooseSpokenAlignment(candidates){
   if(!scriptWords.length) return false;
-  const words=getSpokenWords(transcript);
-  if(!words.length) return false;
+  let best=null;
+  for(const candidate of candidates){
+    const words=getSpokenWords(candidate.text||'');
+    if(!words.length) continue;
+    const alignment=alignSpokenWords(words);
+    if(!alignment) continue;
+    const srConf=candidate.confidence&&candidate.confidence>0?candidate.confidence:1;
+    const combined={...alignment,words,srConfidence:srConf,score:alignment.score*(0.85+Math.min(1,srConf)*0.15)};
+    if(!best || combined.score>best.score) best=combined;
+  }
+  return best;
+}
+
+function applySpokenAlignment(alignment){
+  if(!alignment) return false;
 
   const heardEl=document.getElementById('voiceHeard');
-  if(heardEl) heardEl.textContent=words.slice(-6).join(' ');
+  if(heardEl) heardEl.textContent=alignment.words.slice(-6).join(' ');
 
-  const alignment=alignSpokenWords(words);
-  if(!alignment){
+  voice.lastMatchOk=true;
+  voice.lastConfidence=alignment.confidence;
+  voice.lastMode=alignment.mode;
+  voice.lastSpokenWord=alignment.words[alignment.words.length-1];
+  updateVoiceMatch(alignment);
+  setCursor(alignment.idx,true,alignment);
+  return true;
+}
+
+function matchSpokenCandidates(candidates){
+  const best=chooseSpokenAlignment(candidates);
+  if(!best){
     voice.lastConfidence=0;
     voice.lastMode='';
     updateVoiceMatch(null);
     return false;
   }
+  return applySpokenAlignment(best);
+}
 
-  voice.lastMatchOk=true;
-  voice.lastConfidence=alignment.confidence;
-  voice.lastMode=alignment.mode;
-  voice.lastSpokenWord=words[words.length-1];
-  updateVoiceMatch(alignment);
-  setCursor(alignment.idx,true);
-  return true;
+function matchSpoken(transcript){
+  return matchSpokenCandidates([{text:transcript,confidence:1}]);
 }
 
 // ── Speed modal ───────────────────────────────────────────────────────────────
@@ -1176,7 +1251,7 @@ function setVoiceFollowMode(mode){
   voiceFollowMode=mode==='correct'?'correct':'follow';
   localStorage.setItem('tp-voice-follow-mode',voiceFollowMode);
   if(voice.active && voiceFollowMode==='follow') pauseScript();
-  if(voice.active && voiceFollowMode==='correct' && !isPlaying) startAutoScroll();
+  if(voice.active && voice.ready && voiceFollowMode==='correct' && voiceSpeaking && !isPlaying) startAutoScroll();
 }
 function setCountdownSeconds(value){
   countdownSeconds=Math.max(0,Number(value)||0);
@@ -1216,14 +1291,25 @@ async function startVoice(){
     voice.recognition=new SR();
     voice.recognition.continuous=true;
     voice.recognition.interimResults=true;
+    voice.recognition.maxAlternatives=3;
     voice.recognition.lang=speechLang;
     voice.recognition.onresult=(e)=>{
-      let t='';
-      for(let i=0;i<e.results.length;i++) t+=' '+e.results[i][0].transcript;
-      if(!t.trim()) return;
+      let prefix='', latest=null;
+      for(let i=0;i<e.results.length;i++){
+        if(i<e.results.length-1) prefix+=' '+e.results[i][0].transcript;
+        else latest=e.results[i];
+      }
+      if(!latest) return;
+      const candidates=[];
+      for(let i=0;i<Math.min(latest.length,3);i++){
+        candidates.push({text:`${prefix} ${latest[i].transcript}`,confidence:latest[i].confidence});
+      }
+      const normalized=candidates[0]?getSpokenWords(candidates[0].text).join(' '):'';
+      if(!normalized || (normalized===voice.lastTranscript && Date.now()-lastWordTime<180)) return;
+      voice.lastTranscript=normalized;
       lastWordTime=Date.now();
       if(readingMode){
-        voice.lastMatchOk=matchSpoken(t) !== false;
+        voice.lastMatchOk=matchSpokenCandidates(candidates) !== false;
       }
     };
     voice.recognition.onend=()=>{
@@ -1235,8 +1321,8 @@ async function startVoice(){
       if(e.error==='not-allowed'){alert('❌ Mic permission denied.');stopVoice();}
     };
 
-    voice.active=true; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
-    voice.lastSoundAt=0; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode='';
+    voice.active=true; voice.ready=false; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
+    voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; voice.noiseFloor=0.015;
     enterReadingMode();
 
     document.getElementById('voiceStatus').textContent='ON';
@@ -1253,12 +1339,17 @@ async function startVoice(){
       audioLevels.push(rms);
       if(audioLevels.length>10) audioLevels.shift();
       const avg=audioLevels.reduce((a,b)=>a+b,0)/audioLevels.length;
-      if(avg>RMS_THRESHOLD) voice.lastSoundAt=Date.now();
+      const dynamicThreshold=Math.max(RMS_THRESHOLD,voice.noiseFloor*3.2);
+      const soundNow=avg>dynamicThreshold;
+      if(!voiceSpeaking && !soundNow){
+        voice.noiseFloor=voice.noiseFloor*0.95+avg*0.05;
+      }
+      if(soundNow) voice.lastSoundAt=Date.now();
 
       // Visual bar
       const pct=Math.min(100,avg*800);
       document.getElementById('levelBar').style.width=pct+'%';
-      document.getElementById('levelBar').style.background=avg>RMS_THRESHOLD?'#0f0':'rgba(255,255,255,.25)';
+      document.getElementById('levelBar').style.background=soundNow?'#0f0':'rgba(255,255,255,.25)';
 
       // Gate: RMS high AND SR detected real words recently
       const recentWords=(Date.now()-lastWordTime)<WORD_GATE_MS;
@@ -1267,14 +1358,16 @@ async function startVoice(){
 
       document.getElementById('voiceLabel').textContent=speaking?'🟢 reading':'⚫ silent';
       document.getElementById('voiceHint').textContent=
-        avg>RMS_THRESHOLD && !recentWords ? '(say a script word to start)' :
+        soundNow && !recentWords ? '(say a script word to start)' :
         recentWords && !voice.lastMatchOk ? '(listening for a credible match)' : '';
 
       // Keep the status label tied to real speech so silence never auto-scrolls.
       if(speaking && !voiceSpeaking){
         voiceSpeaking=true;
-      }else if(!speaking && voiceSpeaking){
-        voiceSpeaking=false;
+        if(voice.ready && voiceFollowMode==='correct' && !isPlaying) startAutoScroll();
+      }else if(!speaking){
+        if(voiceSpeaking) voiceSpeaking=false;
+        if(voice.ready && voiceFollowMode==='correct' && isPlaying) pauseScript();
       }
       requestAnimationFrame(monitor);
     }
@@ -1286,17 +1379,19 @@ async function startVoice(){
     }
 
     try{voice.recognition.start();}catch(e){}
-    if(voiceFollowMode==='correct') startAutoScroll();
+    voice.ready=true;
+    if(voiceFollowMode==='correct' && voiceSpeaking) startAutoScroll();
   }catch(e){alert('❌ Microphone access required.');}
 }
 
 function stopVoice(){
-  voice.active=false; voiceSpeaking=false;
+  if(voiceFollowMode==='correct') pauseScript();
+  voice.active=false; voice.ready=false; voiceSpeaking=false;
   clearTimeout(voice.pauseTimer);
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; audioLevels=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; audioLevels=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
