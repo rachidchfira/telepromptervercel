@@ -25,21 +25,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #scriptInput::selection{background:rgba(0,212,255,.55);color:#fff}
 #scriptInput::-moz-selection{background:rgba(0,212,255,.55);color:#fff}
 
-/* Reading display — per-word spans, swapped in for the textarea while voice or play is on */
-#scriptDisplay{display:none;white-space:pre-wrap;word-wrap:break-word;cursor:default;user-select:none;scroll-behavior:smooth}
+/* Reading display — structured spans, swapped in for the textarea while voice or play is on */
+#scriptDisplay{display:none;cursor:default;user-select:none;scroll-behavior:smooth}
+#scriptDisplay .para{transition:opacity .15s ease,filter .15s ease}
+#scriptDisplay .line{min-height:1.7em;border-radius:.22em;padding:0 .12em;margin:0 -.12em;transition:background-color .14s ease,box-shadow .14s ease}
+#scriptDisplay .blank-line{height:1.7em}
 #scriptDisplay .w{
   display:inline;padding:.04em .13em;margin:0 -.04em;border-radius:.2em;
   transition:background-color .12s ease, color .12s ease, box-shadow .12s ease;
   color:inherit;
 }
-#scriptDisplay .w.spoken{color:rgba(255,255,255,.46)}
-#scriptDisplay .w.current{
+#scriptDisplay.mode-word .w.spoken{color:rgba(255,255,255,.46)}
+#scriptDisplay.mode-word .w.current{
   background:#7ee8ff;color:#001014;
   box-shadow:0 0 0 2px rgba(255,255,255,.18),0 0 28px rgba(0,212,255,.62);
 }
+#scriptDisplay.mode-line .w.spoken{color:rgba(255,255,255,.55)}
+#scriptDisplay.mode-line .line.current-line{background:rgba(0,212,255,.13);box-shadow:inset 4px 0 #7ee8ff}
+#scriptDisplay.mode-line .w.current{background:transparent;color:inherit;box-shadow:0 2px 0 #7ee8ff;border-radius:0}
+#scriptDisplay.mode-para .para{opacity:.35;filter:saturate(.75)}
+#scriptDisplay.mode-para .para.current-para{opacity:1;filter:none}
+#scriptDisplay.mode-para .para.current-para .line{background:rgba(0,212,255,.055)}
+#scriptDisplay.mode-para .w.spoken{color:rgba(255,255,255,.62)}
+#scriptDisplay.mode-para .w.current{background:rgba(126,232,255,.18);color:inherit;box-shadow:none}
 #scriptDisplay .ann{color:rgba(255,255,255,.28);font-style:italic;font-size:.78em}
 #scriptDisplay .cmt{color:rgba(255,255,255,.22);font-style:italic;font-size:.78em;display:block}
 .mirror{transform:scaleX(-1)}
+
+#countdownOverlay{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.28);color:#7ee8ff;font-size:8rem;font-weight:800;
+  text-shadow:0 0 34px rgba(0,212,255,.7);pointer-events:none;z-index:5;
+}
 
 /* ── Reading line (fixed band at vertical center) ── */
 #readingLine{
@@ -179,6 +196,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <button class="btn" id="mirrorBtn" onclick="toggleMirror()">🪞 Mirror Mode</button>
   </div>
   <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">READING FOCUS</p>
+    <select id="focusMode" onchange="setFocusMode(this.value)" style="width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;background:#050505;color:#fff;font-size:.85rem">
+      <option value="word">Word highlight</option>
+      <option value="line">Line highlight</option>
+      <option value="para">Paragraph focus</option>
+    </select>
+  </div>
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">VOICE FOLLOW MODE</p>
+    <select id="voiceFollowMode" onchange="setVoiceFollowMode(this.value)" style="width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;background:#050505;color:#fff;font-size:.85rem">
+      <option value="follow">Follow voice only</option>
+      <option value="correct">Auto-scroll with voice correction</option>
+    </select>
+  </div>
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">COUNTDOWN</p>
+    <select id="countdownSeconds" onchange="setCountdownSeconds(this.value)" style="width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;background:#050505;color:#fff;font-size:.85rem">
+      <option value="0">Off</option>
+      <option value="3">3 seconds</option>
+      <option value="5">5 seconds</option>
+    </select>
+  </div>
+  <div style="margin-bottom:1.2rem">
     <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">SPEECH LANGUAGE / ACCENT</p>
     <select id="speechLang" onchange="setSpeechLang(this.value)" style="width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;background:#050505;color:#fff;font-size:.85rem">
       <option value="en-US">English — US</option>
@@ -207,6 +247,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Notes skipped by voice follow:&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
     <div id="scriptDisplay"></div>
     <div id="readingLine"></div>
+    <div id="countdownOverlay"></div>
   </div>
 
   <!-- Progress bar -->
@@ -245,11 +286,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 let isPlaying=false, scrollPos=0, scrollSpeed=2, scrollInt=null;
 let cameraStream=null, mediaRecorder=null, recordedChunks=[], recordingStartTime=0, recordingInterval=null;
 let isMirror=false, textColor='#fff', fontSize='3rem', speechLang='en-US';
+let focusMode='word', voiceFollowMode='follow', countdownSeconds=3, countdownRun=0;
 
 // Reading mode state — per-word spans approach, like teleprompter.com
 let readingMode=false;
 let scriptWords=[];   // [{clean, raw}]
 let wordSpans=[];     // <span class="w"> elements
+let lineSpans=[];     // rendered line wrappers
+let paraSpans=[];     // rendered paragraph wrappers
 let cursor=-1;        // index of the currently highlighted word
 let lastScrollAt=0;   // throttle scrollIntoView
 
@@ -271,6 +315,7 @@ const disp = document.getElementById('scriptDisplay');
 const rl   = document.getElementById('readingLine');
 const pw   = document.getElementById('progressWrap');
 const pb   = document.getElementById('progressBar');
+const co   = document.getElementById('countdownOverlay');
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 ta.addEventListener('input',()=>{
@@ -280,8 +325,17 @@ window.addEventListener('load',()=>{
   const s=localStorage.getItem('tp-script');
   if(s) ta.value=s;
   speechLang=localStorage.getItem('tp-speech-lang')||speechLang;
+  focusMode=localStorage.getItem('tp-focus-mode')||focusMode;
+  voiceFollowMode=localStorage.getItem('tp-voice-follow-mode')||voiceFollowMode;
+  countdownSeconds=Number(localStorage.getItem('tp-countdown-seconds')||countdownSeconds);
   const langEl=document.getElementById('speechLang');
   if(langEl) langEl.value=speechLang;
+  const focusEl=document.getElementById('focusMode');
+  if(focusEl) focusEl.value=focusMode;
+  const followEl=document.getElementById('voiceFollowMode');
+  if(followEl) followEl.value=voiceFollowMode;
+  const countdownEl=document.getElementById('countdownSeconds');
+  if(countdownEl) countdownEl.value=String(countdownSeconds);
   // Mobile adjustments
   if(isMobile){
     fontSize='2rem'; ta.style.fontSize=fontSize; disp.style.fontSize=fontSize;
@@ -312,6 +366,7 @@ function enterReadingMode(){
 function exitReadingMode(){
   if(!readingMode) return;
   readingMode=false;
+  cancelCountdown();
   ta.style.display='block';
   disp.style.display='none';
   rl.style.display='none';
@@ -326,6 +381,8 @@ function clearAllWordClasses(){
     s.classList.remove('spoken');
     s.classList.remove('current');
   }
+  for(const l of lineSpans) l.classList.remove('current-line');
+  for(const p of paraSpans) p.classList.remove('current-para');
 }
 
 // ── Build per-word display ────────────────────────────────────────────────────
@@ -335,10 +392,37 @@ function normalizeWord(text){return text.toLowerCase().replace(/[^a-z0-9]/g,'');
 function buildDisplay(){
   const text=ta.value;
   scriptWords=[];
+  lineSpans=[];
+  paraSpans=[];
   let html='';
   let wIdx=0;
+  let lineIdx=0;
+  let paraIdx=0;
+  let paraOpen=false;
+  const openPara=()=>{
+    if(!paraOpen){
+      html+=`<div class="para" data-para="${paraIdx}">`;
+      paraOpen=true;
+    }
+  };
+  const closePara=()=>{
+    if(paraOpen){
+      html+='</div>';
+      paraOpen=false;
+    }
+  };
   const lines=text.split('\n');
-  lines.forEach((line,li)=>{
+  lines.forEach(line=>{
+    if(line.trim()===''){
+      closePara();
+      html+='<div class="blank-line">&nbsp;</div>';
+      lineIdx++;
+      paraIdx++;
+      return;
+    }
+
+    openPara();
+    html+=`<div class="line" data-line="${lineIdx}" data-para="${paraIdx}">`;
     if(line.trim().startsWith('//')){
       // Whole-line comment — dimmed, never highlighted
       html+=`<span class="cmt">${esc(line)}</span>`;
@@ -353,8 +437,8 @@ function buildDisplay(){
         } else if(/^[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?$/.test(tok)){
           const clean=normalizeWord(tok);
           if(clean){
-            html+=`<span class="w" data-i="${wIdx}">${esc(tok)}</span>`;
-            scriptWords.push({clean, raw:tok});
+            html+=`<span class="w" data-i="${wIdx}" data-line="${lineIdx}" data-para="${paraIdx}">${esc(tok)}</span>`;
+            scriptWords.push({clean, raw:tok, line:lineIdx, para:paraIdx});
             wIdx++;
           } else {
             html+=esc(tok);
@@ -364,13 +448,23 @@ function buildDisplay(){
         }
       }
     }
-    if(li<lines.length-1) html+='\n';
+    html+='</div>';
+    lineIdx++;
   });
+  closePara();
   disp.innerHTML=html;
   wordSpans=Array.from(disp.querySelectorAll('.w'));
+  lineSpans=Array.from(disp.querySelectorAll('.line'));
+  paraSpans=Array.from(disp.querySelectorAll('.para'));
   disp.style.fontSize=fontSize;
   disp.style.color=textColor;
   if(isMirror) disp.classList.add('mirror'); else disp.classList.remove('mirror');
+  applyFocusMode();
+}
+
+function applyFocusMode(){
+  disp.classList.remove('mode-word','mode-line','mode-para');
+  disp.classList.add(`mode-${focusMode}`);
 }
 
 // ── Cursor + scroll ───────────────────────────────────────────────────────────
@@ -393,25 +487,40 @@ function setCursor(idx, smooth=true){
   }
   wordSpans[idx].classList.remove('spoken');
   wordSpans[idx].classList.add('current');
+  updateFocusClasses(idx);
   cursor=idx;
 
-  // Throttle smooth scrolling so rapid cursor jumps don't fight the animation
+  // Center only when the current word leaves the comfortable reading band.
   const now=Date.now();
   if(smooth && (now-lastScrollAt)>SCROLL_THROTTLE_MS){
     lastScrollAt=now;
-    const el=wordSpans[idx];
-    if(el && el.scrollIntoView){
-      try{
-        el.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
-      }catch(e){
-        // Fallback for very old browsers
-        const target=Math.max(0, el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2);
-        disp.scrollTop=target;
-      }
-    }
+    keepCursorCentered(idx,true);
     setTimeout(updateProgress,220);
   }
   updateProgress();
+}
+
+function updateFocusClasses(idx){
+  const meta=scriptWords[idx];
+  if(!meta) return;
+  for(const l of lineSpans) l.classList.toggle('current-line', Number(l.dataset.line)===meta.line);
+  for(const p of paraSpans) p.classList.toggle('current-para', Number(p.dataset.para)===meta.para);
+}
+
+function keepCursorCentered(idx,smooth=true){
+  const el=wordSpans[idx];
+  if(!el) return;
+  const mid=el.offsetTop+el.offsetHeight/2;
+  const bandTop=disp.scrollTop+disp.clientHeight*.38;
+  const bandBottom=disp.scrollTop+disp.clientHeight*.62;
+  if(mid>=bandTop && mid<=bandBottom) return;
+  const target=Math.max(0, mid-disp.clientHeight/2);
+  try{
+    disp.scrollTo({top:target,behavior:smooth?'smooth':'auto'});
+  }catch(e){
+    disp.scrollTop=target;
+  }
+  scrollPos=target;
 }
 
 function syncCursorToScroll(){
@@ -433,10 +542,9 @@ function updateProgress(){
   pb.style.width=(max>0 ? disp.scrollTop/max*100 : 0)+'%';
 }
 
-// ── Scrolling (manual play mode) ──────────────────────────────────────────────
-function playScript(){
+function startAutoScroll(){
   if(isPlaying) return;
-  enterReadingMode();
+  clearInterval(scrollInt);
   isPlaying=true;
   scrollPos=disp.scrollTop;
   scrollInt=setInterval(()=>{
@@ -448,13 +556,24 @@ function playScript(){
     if(scrollPos>=max) pauseScript();
   },16);
 }
+
+// ── Scrolling (manual play mode) ──────────────────────────────────────────────
+async function playScript(){
+  if(isPlaying) return;
+  enterReadingMode();
+  if(!await runCountdown()) return;
+  startAutoScroll();
+}
 function pauseScript(){
+  cancelCountdown();
   if(!isPlaying) return;
   isPlaying=false;
   clearInterval(scrollInt);
+  scrollInt=null;
 }
 function resetScript(){
   pauseScript();
+  cancelCountdown();
   scrollPos=0;
   disp.scrollTop=0;
   cursor=-1;
@@ -466,6 +585,33 @@ function resetScript(){
   voiceSpeaking=false;
   audioLevels=[];
   exitReadingMode();
+}
+
+function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function cancelCountdown(){
+  countdownRun++;
+  if(co){
+    co.style.display='none';
+    co.textContent='';
+  }
+}
+async function runCountdown(){
+  const seconds=Number(countdownSeconds)||0;
+  if(seconds<=0) return true;
+  const runId=++countdownRun;
+  co.style.display='flex';
+  for(let n=seconds;n>0;n--){
+    if(runId!==countdownRun) return false;
+    co.textContent=n;
+    await wait(1000);
+  }
+  if(runId!==countdownRun) return false;
+  co.textContent='GO';
+  await wait(350);
+  if(runId!==countdownRun) return false;
+  co.style.display='none';
+  co.textContent='';
+  return true;
 }
 
 function diceSimilarity(a,b){
@@ -707,14 +853,30 @@ function setSpeed(v){
   document.getElementById('speedLabel').textContent=speeds.find(s=>s.value===v).label;
   closeModal('speedModal');
 }
+function nudgeSpeed(dir){
+  const idx=Math.max(0,speeds.findIndex(s=>s.value===scrollSpeed));
+  const next=Math.max(0,Math.min(speeds.length-1,idx+dir));
+  setSpeed(speeds[next].value);
+}
 
 // ── Display settings ──────────────────────────────────────────────────────────
+const fontSteps=[
+  {size:'2rem',id:'sm'},
+  {size:'2.5rem',id:'md'},
+  {size:'3rem',id:'lg'},
+  {size:'4rem',id:'xl'}
+];
 function setFontSize(size,id){
   fontSize=size;
   ta.style.fontSize=size;
   disp.style.fontSize=size;
   ['sm','md','lg','xl'].forEach(i=>document.getElementById('fs-'+i).classList.remove('active'));
   document.getElementById('fs-'+id).classList.add('active');
+}
+function nudgeFont(dir){
+  const idx=Math.max(0,fontSteps.findIndex(f=>f.size===fontSize));
+  const next=Math.max(0,Math.min(fontSteps.length-1,idx+dir));
+  setFontSize(fontSteps[next].size,fontSteps[next].id);
 }
 function setColor(hex,el){
   textColor=hex;
@@ -728,6 +890,22 @@ function toggleMirror(){
   ta.classList.toggle('mirror',isMirror);
   disp.classList.toggle('mirror',isMirror);
   document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
+}
+function setFocusMode(mode){
+  focusMode=['word','line','para'].includes(mode)?mode:'word';
+  localStorage.setItem('tp-focus-mode',focusMode);
+  applyFocusMode();
+  if(cursor>=0) updateFocusClasses(cursor);
+}
+function setVoiceFollowMode(mode){
+  voiceFollowMode=mode==='correct'?'correct':'follow';
+  localStorage.setItem('tp-voice-follow-mode',voiceFollowMode);
+  if(voice.active && voiceFollowMode==='follow') pauseScript();
+  if(voice.active && voiceFollowMode==='correct' && !isPlaying) startAutoScroll();
+}
+function setCountdownSeconds(value){
+  countdownSeconds=Math.max(0,Number(value)||0);
+  localStorage.setItem('tp-countdown-seconds',String(countdownSeconds));
 }
 function setSpeechLang(lang){
   speechLang=lang||'en-US';
@@ -781,7 +959,6 @@ async function startVoice(){
     voice.recognition.onerror=(e)=>{
       if(e.error==='not-allowed'){alert('❌ Mic permission denied.');stopVoice();}
     };
-    voice.recognition.start();
 
     voice.active=true; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
     voice.lastSoundAt=0; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode='';
@@ -827,6 +1004,14 @@ async function startVoice(){
       requestAnimationFrame(monitor);
     }
     monitor();
+
+    if(!await runCountdown()){
+      stopVoice();
+      return;
+    }
+
+    try{voice.recognition.start();}catch(e){}
+    if(voiceFollowMode==='correct') startAutoScroll();
   }catch(e){alert('❌ Microphone access required.');}
 }
 
@@ -939,6 +1124,45 @@ function showModal(id){document.getElementById(id).classList.add('active');}
 function closeModal(id){document.getElementById(id).classList.remove('active');}
 document.querySelectorAll('.modal').forEach(m=>{
   m.addEventListener('click',e=>{if(e.target===m) m.classList.remove('active');});
+});
+
+document.addEventListener('keydown',e=>{
+  const tag=(e.target&&e.target.tagName)||'';
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag) || e.target.isContentEditable) return;
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if(document.querySelector('.modal.active')) return;
+
+  if(e.key===' ' || e.key==='Enter'){
+    e.preventDefault();
+    isPlaying?pauseScript():playScript();
+  }else if(e.key==='Escape'){
+    e.preventDefault();
+    resetScript();
+  }else if(e.key==='r' || e.key==='R'){
+    e.preventDefault();
+    resetScript();
+  }else if(e.key==='v' || e.key==='V'){
+    e.preventDefault();
+    toggleVoice();
+  }else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    nudgeSpeed(1);
+  }else if(e.key==='ArrowDown'){
+    e.preventDefault();
+    nudgeSpeed(-1);
+  }else if(e.key==='+' || e.key==='='){
+    e.preventDefault();
+    nudgeFont(1);
+  }else if(e.key==='-' || e.key==='_'){
+    e.preventDefault();
+    nudgeFont(-1);
+  }else if(e.key==='1'){
+    setFocusMode('word');
+  }else if(e.key==='2'){
+    setFocusMode('line');
+  }else if(e.key==='3'){
+    setFocusMode('para');
+  }
 });
 
 console.log('%c🎬 Teleprompter Ready','color:#00d4ff;font-size:16px;font-weight:bold');
