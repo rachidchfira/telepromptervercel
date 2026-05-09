@@ -14,7 +14,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Script area ── */
 #scriptWrap{position:relative;margin-bottom:.4rem}
-#scriptInput{
+#scriptInput, #scriptDisplay{
   width:100%;height:60vh;padding:3rem 4rem;
   font-size:3rem;line-height:1.7;border-radius:15px;
   background:#000;color:#fff;border:3px solid #00d4ff;
@@ -22,18 +22,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 #scriptInput{resize:none;transition:color .3s,transform .3s}
 #scriptInput::placeholder{color:rgba(255,255,255,.2)}
-#scriptInput::selection{background:rgba(0,212,255,.55);color:#fff;text-shadow:0 0 8px rgba(0,212,255,.6)}
-#scriptInput::-moz-selection{background:rgba(0,212,255,.55);color:#fff;text-shadow:0 0 8px rgba(0,212,255,.6)}
-/* Brighter, more visible highlight while reading mode is active */
-#scriptInput.reading::selection{
-  background:linear-gradient(135deg,#00d4ff,#0099cc),#00d4ff;
-  background-color:#00d4ff;color:#000;
-  text-shadow:0 0 0 transparent;
+#scriptInput::selection{background:rgba(0,212,255,.55);color:#fff}
+#scriptInput::-moz-selection{background:rgba(0,212,255,.55);color:#fff}
+
+/* Reading display — per-word spans, swapped in for the textarea while voice or play is on */
+#scriptDisplay{display:none;white-space:pre-wrap;word-wrap:break-word;cursor:default;user-select:none;scroll-behavior:smooth}
+#scriptDisplay .w{
+  display:inline;padding:.04em .13em;margin:0 -.04em;border-radius:.2em;
+  transition:background-color .12s ease, color .12s ease, box-shadow .12s ease;
+  color:inherit;
 }
-#scriptInput.reading::-moz-selection{
-  background:#00d4ff;color:#000;text-shadow:0 0 0 transparent;
+#scriptDisplay .w.spoken{color:rgba(255,255,255,.46)}
+#scriptDisplay .w.current{
+  background:#7ee8ff;color:#001014;
+  box-shadow:0 0 0 2px rgba(255,255,255,.18),0 0 28px rgba(0,212,255,.62);
 }
-#scriptInput.reading{caret-color:transparent}
+#scriptDisplay .ann{color:rgba(255,255,255,.28);font-style:italic;font-size:.78em}
+#scriptDisplay .cmt{color:rgba(255,255,255,.22);font-style:italic;font-size:.78em;display:block}
 .mirror{transform:scaleX(-1)}
 
 /* ── Reading line (fixed band at vertical center) ── */
@@ -94,7 +99,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   body{padding:.4rem}
   .header h1{font-size:1.3rem}
   .header p{font-size:.72rem}
-  #scriptInput{
+  #scriptInput,#scriptDisplay{
     height:62vh;padding:1.2rem 1rem;font-size:1.8rem;line-height:1.6;border-width:2px
   }
   .btn{padding:.4rem .7rem;font-size:.72rem}
@@ -183,9 +188,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <p>Voice • Camera • Recording • Live Streaming</p>
   </div>
 
-  <!-- Script area: one textarea for editing, reading, highlighting, and scrolling -->
+  <!-- Script area: textarea for editing, scriptDisplay for reading/voice -->
   <div id="scriptWrap">
-    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Comments skipped by voice follow:&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
+    <textarea id="scriptInput" placeholder="Paste or type your script here...&#10;&#10;Notes skipped by voice follow:&#10;  [pause]  or  [smile here]  — inline stage directions&#10;  (remember to look at camera)  — parenthetical notes&#10;  // This whole line is a comment"></textarea>
+    <div id="scriptDisplay"></div>
     <div id="readingLine"></div>
   </div>
 
@@ -225,16 +231,27 @@ let isPlaying=false, scrollPos=0, scrollSpeed=2, scrollInt=null;
 let cameraStream=null, mediaRecorder=null, recordedChunks=[], recordingStartTime=0, recordingInterval=null;
 let isMirror=false, textColor='#fff', fontSize='3rem';
 
-// Reading mode state
-let readingMode=false, scriptWords=[], highlightIdx=-1, measureBox=null;
+// Reading mode state — per-word spans approach, like teleprompter.com
+let readingMode=false;
+let scriptWords=[];   // [{clean, raw}]
+let wordSpans=[];     // <span class="w"> elements
+let cursor=-1;        // index of the currently highlighted word
+let lastScrollAt=0;   // throttle scrollIntoView
 
 // Voice state
-const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true};
+const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true,lastSpokenWord:''};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
-const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300, VOICE_CONTEXT_WORDS=12;
+const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
+const VOICE_CONTEXT_WORDS=8;      // recent SR words used for phrase alignment
+const SIM_THRESHOLD=0.62;          // dice similarity needed to count as a match
+const STRONG_SIM=0.9;              // a forward jump beyond +1 needs this
+const LOOK_AHEAD=14;               // search window past cursor
+const LOOK_BEHIND=3;               // allow short corrections without jumping around
+const SCROLL_THROTTLE_MS=90;       // limit scroll calls to be smooth
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const ta   = document.getElementById('scriptInput');
+const disp = document.getElementById('scriptDisplay');
 const rl   = document.getElementById('readingLine');
 const pw   = document.getElementById('progressWrap');
 const pb   = document.getElementById('progressBar');
@@ -242,14 +259,13 @@ const pb   = document.getElementById('progressBar');
 // ── Persistence ───────────────────────────────────────────────────────────────
 ta.addEventListener('input',()=>{
   localStorage.setItem('tp-script',ta.value);
-  if(readingMode) buildWordIndex();
 });
 window.addEventListener('load',()=>{
   const s=localStorage.getItem('tp-script');
   if(s) ta.value=s;
   // Mobile adjustments
   if(isMobile){
-    fontSize='2rem'; ta.style.fontSize=fontSize;
+    fontSize='2rem'; ta.style.fontSize=fontSize; disp.style.fontSize=fontSize;
     document.getElementById('mobileLiveTip').style.display='block';
     document.getElementById('desktopLiveTip').style.display='none';
     document.getElementById('fs-lg').classList.remove('active');
@@ -261,132 +277,152 @@ window.addEventListener('load',()=>{
 function enterReadingMode(){
   if(readingMode) return;
   readingMode=true;
-  buildWordIndex();
-  ta.readOnly=true;
-  ta.classList.add('reading');
+  cursor=-1;
+  lastScrollAt=0;
+  buildDisplay();
+  ta.style.display='none';
+  disp.style.display='block';
+  disp.scrollTop=0;
+  scrollPos=0;
   rl.style.display='block';
   pw.style.display='block';
-  highlightIdx=-1;
+  voice.lastSpokenWord='';
 }
 function exitReadingMode(){
   if(!readingMode) return;
   readingMode=false;
-  ta.readOnly=false;
-  ta.classList.remove('reading');
+  ta.style.display='block';
+  disp.style.display='none';
   rl.style.display='none';
   pw.style.display='none';
   pb.style.width='0%';
-  clearWordHighlight();
+  clearAllWordClasses();
+  cursor=-1;
 }
 
-// ── Build exact word index from the textarea ──────────────────────────────────
-function normalizeWord(text){
-  return text.toLowerCase().replace(/[^a-z0-9]/g,'');
+function clearAllWordClasses(){
+  for(const s of wordSpans){
+    s.classList.remove('spoken');
+    s.classList.remove('current');
+  }
 }
 
-function buildWordIndex(){
+// ── Build per-word display ────────────────────────────────────────────────────
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function normalizeWord(text){return text.toLowerCase().replace(/[^a-z0-9]/g,'');}
+
+function buildDisplay(){
   const text=ta.value;
   scriptWords=[];
-  let offset=0;
+  let html='';
+  let wIdx=0;
   const lines=text.split('\n');
-  lines.forEach(line=>{
-    if(!line.trim().startsWith('//')){
-      const regex=/\[[^\]]*\]|\([^)]*\)|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g;
-      let match;
-      while((match=regex.exec(line))!==null){
-        const token=match[0];
-        if(token[0]==='[' || token[0]==='(') continue;
-        const word=normalizeWord(token);
-        if(word){
-          scriptWords.push({
-            word,
-            start:offset+match.index,
-            end:offset+match.index+token.length
-          });
+  lines.forEach((line,li)=>{
+    if(line.trim().startsWith('//')){
+      // Whole-line comment — dimmed, never highlighted
+      html+=`<span class="cmt">${esc(line)}</span>`;
+    } else {
+      // Tokenize: bracketed/parenthetical (skipped), words, everything else passes through
+      const regex=/\[[^\]]*\]|\([^)]*\)|[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[^\[\(A-Za-z0-9]+|./g;
+      let m;
+      while((m=regex.exec(line))!==null){
+        const tok=m[0];
+        if(tok[0]==='[' || tok[0]==='('){
+          html+=`<span class="ann">${esc(tok)}</span>`;
+        } else if(/^[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?$/.test(tok)){
+          const clean=normalizeWord(tok);
+          if(clean){
+            html+=`<span class="w" data-i="${wIdx}">${esc(tok)}</span>`;
+            scriptWords.push({clean, raw:tok});
+            wIdx++;
+          } else {
+            html+=esc(tok);
+          }
+        } else {
+          html+=esc(tok);
         }
       }
     }
-    offset+=line.length+1;
+    if(li<lines.length-1) html+='\n';
   });
+  disp.innerHTML=html;
+  wordSpans=Array.from(disp.querySelectorAll('.w'));
+  disp.style.fontSize=fontSize;
+  disp.style.color=textColor;
+  if(isMirror) disp.classList.add('mirror'); else disp.classList.remove('mirror');
 }
 
-// ── Word highlighting ─────────────────────────────────────────────────────────
-function highlightWord(idx, scrollToIt=true){
-  if(idx===highlightIdx && idx>=0) return;
-  highlightIdx=idx;
-  const word=scriptWords[idx];
-  if(idx<0 || !word) return;
-  try{ta.focus({preventScroll:true});}catch(e){ta.focus();}
-  ta.setSelectionRange(word.start, word.end);
-  if(scrollToIt) scrollToWord(idx);
-}
+// ── Cursor + scroll ───────────────────────────────────────────────────────────
+function setCursor(idx, smooth=true){
+  if(!wordSpans.length) return;
+  idx=Math.max(0, Math.min(wordSpans.length-1, idx));
 
-function clearWordHighlight(){
-  if(document.activeElement===ta){
-    const pos=ta.selectionEnd;
-    ta.setSelectionRange(pos,pos);
+  if(idx<cursor || cursor<0){
+    clearAllWordClasses();
+    for(let i=0;i<idx;i++) wordSpans[i].classList.add('spoken');
+  }else if(idx>cursor){
+    for(let i=Math.max(0,cursor);i<idx;i++){
+      wordSpans[i].classList.remove('current');
+      wordSpans[i].classList.add('spoken');
+    }
   }
-  highlightIdx=-1;
-}
 
-function esc(t){
-  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function syncMeasureBox(){
-  if(!measureBox){
-    measureBox=document.createElement('div');
-    document.body.appendChild(measureBox);
+  if(cursor>=0 && cursor!==idx && wordSpans[cursor]){
+    wordSpans[cursor].classList.remove('current');
   }
-  const cs=getComputedStyle(ta);
-  measureBox.style.cssText=`
-    position:absolute;
-    visibility:hidden;
-    pointer-events:none;
-    left:-9999px;
-    top:0;
-    width:${ta.offsetWidth}px;
-    min-height:0;
-    white-space:pre-wrap;
-    overflow-wrap:break-word;
-    word-wrap:break-word;
-    box-sizing:${cs.boxSizing};
-    padding:${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft};
-    border:${cs.borderTopWidth} solid transparent;
-    font:${cs.font};
-    line-height:${cs.lineHeight};
-    letter-spacing:${cs.letterSpacing};
-  `;
+  wordSpans[idx].classList.remove('spoken');
+  wordSpans[idx].classList.add('current');
+  cursor=idx;
+
+  // Throttle smooth scrolling so rapid cursor jumps don't fight the animation
+  const now=Date.now();
+  if(smooth && (now-lastScrollAt)>SCROLL_THROTTLE_MS){
+    lastScrollAt=now;
+    const el=wordSpans[idx];
+    if(el && el.scrollIntoView){
+      try{
+        el.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+      }catch(e){
+        // Fallback for very old browsers
+        const target=Math.max(0, el.offsetTop - disp.clientHeight/2 + el.offsetHeight/2);
+        disp.scrollTop=target;
+      }
+    }
+    setTimeout(updateProgress,220);
+  }
+  updateProgress();
 }
 
-function scrollToWord(idx){
-  const word=scriptWords[idx];
-  if(!word) return;
-  syncMeasureBox();
-  measureBox.innerHTML=`${esc(ta.value.slice(0,word.start))}<span id="wordMeasureMarker">${esc(ta.value.slice(word.start,word.end))}</span>${esc(ta.value.slice(word.end))}`;
-  const marker=document.getElementById('wordMeasureMarker');
-  if(!marker) return;
-  const target=Math.max(0,marker.offsetTop-ta.clientHeight/2+marker.offsetHeight/2);
-  ta.scrollTo({top:target,behavior:'smooth'});
-  scrollPos=target;
+function syncCursorToScroll(){
+  if(!wordSpans.length) return;
+  const center=disp.scrollTop+disp.clientHeight/2;
+  let best=0, bestDist=Infinity;
+  for(let i=0;i<wordSpans.length;i++){
+    const el=wordSpans[i];
+    const mid=el.offsetTop+el.offsetHeight/2;
+    const dist=Math.abs(mid-center);
+    if(dist<bestDist){best=i;bestDist=dist;}
+  }
+  setCursor(best,false);
 }
 
 // Update progress bar
 function updateProgress(){
-  const max=ta.scrollHeight-ta.clientHeight;
-  pb.style.width=(max>0 ? ta.scrollTop/max*100 : 0)+'%';
+  const max=disp.scrollHeight-disp.clientHeight;
+  pb.style.width=(max>0 ? disp.scrollTop/max*100 : 0)+'%';
 }
 
-// ── Scrolling ─────────────────────────────────────────────────────────────────
+// ── Scrolling (manual play mode) ──────────────────────────────────────────────
 function playScript(){
   if(isPlaying) return;
   enterReadingMode();
   isPlaying=true;
-  scrollPos=ta.scrollTop;
+  scrollPos=disp.scrollTop;
   scrollInt=setInterval(()=>{
-    const max=Math.max(0,ta.scrollHeight-ta.clientHeight);
+    const max=Math.max(0,disp.scrollHeight-disp.clientHeight);
     scrollPos=Math.min(max,scrollPos+scrollSpeed);
-    ta.scrollTop=scrollPos;
+    disp.scrollTop=scrollPos;
+    syncCursorToScroll();
     updateProgress();
     if(scrollPos>=max) pauseScript();
   },16);
@@ -399,13 +435,46 @@ function pauseScript(){
 function resetScript(){
   pauseScript();
   scrollPos=0;
-  ta.scrollTop=0;
-  ta.setSelectionRange(0,0);
-  highlightIdx=-1;
+  disp.scrollTop=0;
+  cursor=-1;
+  voice.lastSpokenWord='';
   lastWordTime=0;
   voiceSpeaking=false;
   audioLevels=[];
   exitReadingMode();
+}
+
+function diceSimilarity(a,b){
+  if(!a||!b) return 0;
+  if(a===b) return 1;
+  if(a.length<2||b.length<2) return a[0]===b[0] ? Math.min(a.length,b.length)/Math.max(a.length,b.length) : 0;
+  const pairs=new Map();
+  for(let i=0;i<a.length-1;i++){
+    const pair=a.slice(i,i+2);
+    pairs.set(pair,(pairs.get(pair)||0)+1);
+  }
+  let intersection=0;
+  for(let i=0;i<b.length-1;i++){
+    const pair=b.slice(i,i+2);
+    const count=pairs.get(pair)||0;
+    if(count>0){
+      intersection++;
+      pairs.set(pair,count-1);
+    }
+  }
+  return (2*intersection)/((a.length-1)+(b.length-1));
+}
+
+function wordSimilarity(scriptWord,spokenWord){
+  if(scriptWord===spokenWord) return 1;
+  // Very short words are too collision-prone for fuzzy matching ("to"/"too", "a"/"the").
+  if(Math.min(scriptWord.length,spokenWord.length)<=3) return 0;
+  const dice=diceSimilarity(scriptWord,spokenWord);
+  if(dice>=SIM_THRESHOLD) return dice;
+  if(scriptWord.startsWith(spokenWord)||spokenWord.startsWith(scriptWord)){
+    return Math.max(dice,0.82*Math.min(scriptWord.length,spokenWord.length)/Math.max(scriptWord.length,spokenWord.length));
+  }
+  return dice;
 }
 
 function matchSpoken(transcript){
@@ -421,39 +490,41 @@ function matchSpoken(transcript){
   const heardEl=document.getElementById('voiceHeard');
   if(heardEl) heardEl.textContent=words.slice(-6).join(' ');
 
-  // Search a wide window around the current position
-  const expected=Math.max(0,highlightIdx+1);
-  const searchStart=Math.max(0,expected-10);
-  const searchEnd=Math.min(scriptWords.length,expected+80);
+  const expected=cursor<0 ? 0 : Math.min(scriptWords.length-1,cursor+1);
+  const searchStart=Math.max(0,(cursor<0?0:cursor)-LOOK_BEHIND);
+  const searchEnd=Math.min(scriptWords.length-1,expected+LOOK_AHEAD);
 
   let best=null;
 
-  for(let s=searchStart;s<searchEnd;s++){
-    for(let p=0;p<words.length;p++){
-      let len=0;
-      while(s+len<scriptWords.length && p+len<words.length &&
-            scriptWords[s+len].word===words[p+len]) len++;
-      if(!len) continue;
+  for(let idx=searchStart;idx<=searchEnd;idx++){
+    const maxLen=Math.min(VOICE_CONTEXT_WORDS,words.length,idx+1);
+    for(let len=1;len<=maxLen;len++){
+      const scriptStart=idx-len+1;
+      const spokenStart=words.length-len;
+      let total=0, ok=true;
+      for(let j=0;j<len;j++){
+        const sim=wordSimilarity(scriptWords[scriptStart+j].clean,words[spokenStart+j]);
+        if(sim<SIM_THRESHOLD){ok=false;break;}
+        total+=sim;
+      }
+      if(!ok) continue;
 
-      const idx=s+len-1;
-      // Recency: 1.0 if the run ends at the most recent spoken word, lower otherwise
-      const recency=(p+len)/words.length;
-      // Hard rule: a single-word match that goes BACKWARD is almost always a false positive.
-      // Multi-word backward jumps are allowed (user repeated a phrase).
-      if(len===1 && idx<highlightIdx) continue;
-      // Strong forward bias
-      const forward=idx>=highlightIdx?80:-120;
-      const score=len*250+recency*120+forward-Math.abs(idx-expected);
-      if(!best||score>best.score) best={idx,score,len};
+      const avg=total/len;
+      if(len===1 && idx<cursor) continue;
+      if(len===1 && idx>expected+1 && avg<STRONG_SIM) continue;
+
+      const distance=Math.abs(idx-expected);
+      const direction=idx>=expected ? 0.08 : -0.18;
+      const exactBonus=avg===1 ? 18 : 0;
+      const score=(avg*100)+(len*24)+exactBonus+direction-(distance*3);
+      if(!best||score>best.score) best={idx,score,len,avg};
     }
   }
 
   if(!best) return false;
   voice.lastMatchOk=true;
-  if(best.idx!==highlightIdx){
-    highlightWord(best.idx,true);
-    updateProgress();
-  }
+  voice.lastSpokenWord=words[words.length-1];
+  setCursor(best.idx,true);
   return true;
 }
 
@@ -478,18 +549,21 @@ function setSpeed(v){
 function setFontSize(size,id){
   fontSize=size;
   ta.style.fontSize=size;
+  disp.style.fontSize=size;
   ['sm','md','lg','xl'].forEach(i=>document.getElementById('fs-'+i).classList.remove('active'));
   document.getElementById('fs-'+id).classList.add('active');
 }
 function setColor(hex,el){
   textColor=hex;
   ta.style.color=hex;
+  disp.style.color=hex;
   document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
   el.classList.add('selected');
 }
 function toggleMirror(){
   isMirror=!isMirror;
   ta.classList.toggle('mirror',isMirror);
+  disp.classList.toggle('mirror',isMirror);
   document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
 }
 
