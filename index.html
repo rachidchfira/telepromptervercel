@@ -110,6 +110,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .card:hover{background:rgba(0,212,255,.15);border-color:#00d4ff}
 .swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .2s;display:inline-block}
 .swatch.selected{border-color:#fff;transform:scale(1.2)}
+.field,.select{
+  width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;
+  background:#050505;color:#fff;font-size:.85rem;font-family:inherit;
+}
+.mini-label{color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.panel-list{display:grid;gap:.6rem}
+.muted{color:rgba(255,255,255,.55);font-size:.78rem}
+.project-pill{align-self:center;color:#7ee8ff;border:1px solid rgba(126,232,255,.35);border-radius:999px;padding:.25rem .6rem;font-size:.72rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-input{display:none}
 
 /* ── Mobile ── */
 @media(max-width:600px){
@@ -133,11 +143,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- MODALS -->
 <div class="modal" id="templatesModal"><div class="modal-content">
   <h2 style="color:#00d4ff;margin-bottom:1rem">📝 Templates</h2>
-  <div class="card" onclick="loadTemplate('youtube')"><strong style="color:#00d4ff">📺 YouTube Intro</strong><br><small>Hook, topic, subscribe CTA</small></div>
-  <div class="card" onclick="loadTemplate('course')"><strong style="color:#00d4ff">🎓 Course Lesson</strong><br><small>Educational format with points</small></div>
-  <div class="card" onclick="loadTemplate('social')"><strong style="color:#00d4ff">📱 Social / Reels</strong><br><small>Hook → Value → CTA</small></div>
-  <div class="card" onclick="loadTemplate('product')"><strong style="color:#00d4ff">🛍️ Product Demo</strong><br><small>Problem → Solution → Link</small></div>
+  <div id="templatesList" class="panel-list"></div>
+  <div style="margin-top:1rem;border-top:1px solid rgba(255,255,255,.12);padding-top:1rem">
+    <p class="mini-label">SAVE CURRENT SCRIPT AS TEMPLATE</p>
+    <div class="row">
+      <input id="templateNameInput" class="field" style="flex:1;min-width:220px" placeholder="Template name">
+      <button class="btn" onclick="saveTemplateFromCurrent()">Save Template</button>
+      <button class="btn" onclick="resetTemplates()">Reset Defaults</button>
+    </div>
+  </div>
   <button onclick="closeModal('templatesModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
+</div></div>
+
+<div class="modal" id="projectsModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">📁 Scripts / Projects</h2>
+  <div class="row" style="margin-bottom:1rem">
+    <input id="projectNameInput" class="field" style="flex:1;min-width:220px" placeholder="Project name">
+    <button class="btn" onclick="createProjectFromInput()">New Project</button>
+    <button class="btn" onclick="renameCurrentProject()">Rename Current</button>
+  </div>
+  <div id="projectsList" class="panel-list"></div>
+  <button onclick="closeModal('projectsModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
+</div></div>
+
+<div class="modal" id="historyModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">🕘 Autosave History</h2>
+  <p class="muted" style="margin-bottom:1rem">Snapshots are stored locally per project. Restoring replaces the current editor text.</p>
+  <div id="historyList" class="panel-list"></div>
+  <button onclick="closeModal('historyModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
+</div></div>
+
+<div class="modal" id="filesModal"><div class="modal-content">
+  <h2 style="color:#00d4ff;margin-bottom:1rem">↕️ Import / Export</h2>
+  <div style="margin-bottom:1.2rem">
+    <p class="mini-label">IMPORT</p>
+    <p class="muted" style="margin-bottom:.6rem">Imports .txt, .md, and most .docx files in modern browsers.</p>
+    <input id="scriptFileInput" class="file-input" type="file" accept=".txt,.md,.markdown,.docx" onchange="importScriptFile(this.files[0])">
+    <button class="btn" onclick="document.getElementById('scriptFileInput').click()">Choose File</button>
+  </div>
+  <div>
+    <p class="mini-label">EXPORT CURRENT SCRIPT</p>
+    <div class="row">
+      <button class="btn" onclick="exportScript('txt')">Export .txt</button>
+      <button class="btn" onclick="exportScript('md')">Export .md</button>
+      <button class="btn" onclick="exportScript('docx')">Export .docx</button>
+    </div>
+  </div>
+  <button onclick="closeModal('filesModal')" class="btn" style="margin-top:1rem;width:100%">Close</button>
 </div></div>
 
 <div class="modal" id="streamModal"><div class="modal-content">
@@ -273,6 +325,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <button class="btn" onclick="resetScript()">🔄 Reset</button>
     <button class="btn" onclick="showSpeedModal()">⚡ <span id="speedLabel">Normal</span></button>
     <div class="sep"></div>
+    <button class="btn" onclick="showProjectsModal()">📁 Projects</button>
+    <button class="btn" onclick="showHistoryModal()">🕘 History</button>
+    <button class="btn" onclick="showModal('filesModal')">↕️ Files</button>
+    <span class="project-pill" id="projectPill">Untitled Script</span>
+    <div class="sep"></div>
     <button class="btn" id="cameraBtn" onclick="toggleCamera()">📹 Camera<span class="status-badge inactive" id="cameraStatus">OFF</span></button>
     <button class="btn" onclick="showModal('recordModal')">⏺️ Record</button>
     <div class="sep"></div>
@@ -287,6 +344,22 @@ let isPlaying=false, scrollPos=0, scrollSpeed=2, scrollInt=null;
 let cameraStream=null, mediaRecorder=null, recordedChunks=[], recordingStartTime=0, recordingInterval=null;
 let isMirror=false, textColor='#fff', fontSize='3rem', speechLang='en-US';
 let focusMode='word', voiceFollowMode='follow', countdownSeconds=3, countdownRun=0;
+let projects=[], currentProjectId=null, historyByProject={}, templateStore=[];
+let autosaveTimer=null, historyTimer=null, lastHistoryContent='', lastHistoryAt=0;
+
+const STORE={
+  projects:'tp-projects-v1',
+  currentProject:'tp-current-project-id',
+  history:'tp-history-v1',
+  templates:'tp-templates-v1'
+};
+
+const DEFAULT_TEMPLATES=[
+  {id:'youtube',name:'📺 YouTube Intro',description:'Hook, topic, subscribe CTA',content:"Hey everyone, welcome back!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\n[pause]\n\nLet's dive right in..."},
+  {id:'course',name:'🎓 Course Lesson',description:'Educational format with points',content:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will know:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[pause]\n\n[MAIN CONTENT]\n\n[smile]\n\nSee you in the next lesson!"},
+  {id:'social',name:'📱 Social / Reels',description:'Hook → Value → CTA',content:"[HOOK — grab attention in first 3 seconds]\n\n[VALUE — the thing they came for]\n\n[pause]\n\n[CTA — follow for more]"},
+  {id:'product',name:'🛍️ Product Demo',description:'Problem → Solution → Link',content:"Introducing [PRODUCT NAME].\n\nThe problem it solves: [PROBLEM]\n\n[pause]\n\nHere's how it works: [EXPLANATION]\n\nGet started at [LINK]"}
+];
 
 // Reading mode state — per-word spans approach, like teleprompter.com
 let readingMode=false;
@@ -319,11 +392,12 @@ const co   = document.getElementById('countdownOverlay');
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 ta.addEventListener('input',()=>{
-  localStorage.setItem('tp-script',ta.value);
+  queueProjectSave();
+  queueHistorySnapshot();
 });
 window.addEventListener('load',()=>{
-  const s=localStorage.getItem('tp-script');
-  if(s) ta.value=s;
+  initTemplates();
+  initProjects();
   speechLang=localStorage.getItem('tp-speech-lang')||speechLang;
   focusMode=localStorage.getItem('tp-focus-mode')||focusMode;
   voiceFollowMode=localStorage.getItem('tp-voice-follow-mode')||voiceFollowMode;
@@ -345,6 +419,207 @@ window.addEventListener('load',()=>{
     document.getElementById('fs-md').classList.add('active');
   }
 });
+window.addEventListener('beforeunload',()=>{
+  saveCurrentProject();
+  addHistorySnapshot('session end');
+});
+
+function uid(prefix){return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;}
+function safeJson(key,fallback){
+  try{
+    const raw=localStorage.getItem(key);
+    return raw?JSON.parse(raw):fallback;
+  }catch(e){return fallback;}
+}
+function saveJson(key,value){localStorage.setItem(key,JSON.stringify(value));}
+function currentProject(){return projects.find(p=>p.id===currentProjectId)||null;}
+function formatDate(ts){
+  const d=new Date(ts);
+  return d.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function slug(name){
+  return (name||'script').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'script';
+}
+function updateProjectPill(){
+  const p=currentProject();
+  const pill=document.getElementById('projectPill');
+  if(pill) pill.textContent=p?p.name:'Untitled Script';
+}
+function initProjects(){
+  projects=safeJson(STORE.projects,[]);
+  historyByProject=safeJson(STORE.history,{});
+  currentProjectId=localStorage.getItem(STORE.currentProject);
+
+  if(!projects.length){
+    const legacy=localStorage.getItem('tp-script')||'';
+    const p={id:uid('project'),name:'Untitled Script',content:legacy,createdAt:Date.now(),updatedAt:Date.now()};
+    projects=[p];
+    currentProjectId=p.id;
+    saveProjects();
+  }
+  if(!projects.some(p=>p.id===currentProjectId)) currentProjectId=projects[0].id;
+
+  const p=currentProject();
+  ta.value=p?p.content:'';
+  lastHistoryContent=ta.value;
+  lastHistoryAt=Date.now();
+  localStorage.setItem(STORE.currentProject,currentProjectId);
+  updateProjectPill();
+}
+function saveProjects(){
+  saveJson(STORE.projects,projects);
+  if(currentProjectId) localStorage.setItem(STORE.currentProject,currentProjectId);
+}
+function saveHistory(){
+  saveJson(STORE.history,historyByProject);
+}
+function saveCurrentProject(){
+  const p=currentProject();
+  if(!p) return;
+  p.content=ta.value;
+  p.updatedAt=Date.now();
+  localStorage.setItem('tp-script',ta.value); // legacy fallback
+  saveProjects();
+  updateProjectPill();
+}
+function queueProjectSave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer=setTimeout(saveCurrentProject,350);
+}
+function addHistorySnapshot(reason='autosave'){
+  const p=currentProject();
+  if(!p) return;
+  const content=ta.value;
+  if(content===lastHistoryContent) return;
+  const list=historyByProject[p.id]||[];
+  list.unshift({id:uid('snap'),projectId:p.id,projectName:p.name,content,reason,createdAt:Date.now()});
+  historyByProject[p.id]=list.slice(0,30);
+  lastHistoryContent=content;
+  lastHistoryAt=Date.now();
+  saveHistory();
+}
+function queueHistorySnapshot(){
+  clearTimeout(historyTimer);
+  historyTimer=setTimeout(()=>{
+    const enoughTime=Date.now()-lastHistoryAt>15000;
+    const enoughChange=Math.abs(ta.value.length-lastHistoryContent.length)>40 || ta.value!==lastHistoryContent;
+    if(enoughTime && enoughChange) addHistorySnapshot('autosave');
+  },2500);
+}
+function loadProject(id){
+  saveCurrentProject();
+  addHistorySnapshot('before switch');
+  const p=projects.find(x=>x.id===id);
+  if(!p) return;
+  resetScript();
+  currentProjectId=p.id;
+  ta.value=p.content||'';
+  lastHistoryContent=ta.value;
+  lastHistoryAt=Date.now();
+  localStorage.setItem(STORE.currentProject,currentProjectId);
+  localStorage.setItem('tp-script',ta.value);
+  updateProjectPill();
+  closeModal('projectsModal');
+}
+function createProject(name,content=''){
+  saveCurrentProject();
+  const p={id:uid('project'),name:(name||'Untitled Script').trim(),content,createdAt:Date.now(),updatedAt:Date.now()};
+  projects.unshift(p);
+  currentProjectId=p.id;
+  ta.value=content;
+  lastHistoryContent=content;
+  lastHistoryAt=Date.now();
+  saveProjects();
+  updateProjectPill();
+  renderProjects();
+}
+function createProjectFromInput(){
+  const input=document.getElementById('projectNameInput');
+  createProject(input&&input.value?input.value:'Untitled Script','');
+  if(input) input.value='';
+}
+function renameCurrentProject(){
+  const p=currentProject();
+  if(!p) return;
+  const name=prompt('Project name',p.name);
+  if(!name||!name.trim()) return;
+  p.name=name.trim();
+  p.updatedAt=Date.now();
+  saveProjects();
+  updateProjectPill();
+  renderProjects();
+}
+function duplicateProject(id){
+  const p=projects.find(x=>x.id===id);
+  if(!p) return;
+  const copy={...p,id:uid('project'),name:`${p.name} Copy`,createdAt:Date.now(),updatedAt:Date.now()};
+  projects.unshift(copy);
+  saveProjects();
+  renderProjects();
+}
+function deleteProject(id){
+  if(projects.length<=1){alert('Keep at least one project.');return;}
+  const p=projects.find(x=>x.id===id);
+  if(!p||!confirm(`Delete "${p.name}"?`)) return;
+  projects=projects.filter(x=>x.id!==id);
+  delete historyByProject[id];
+  if(currentProjectId===id){
+    currentProjectId=projects[0].id;
+    ta.value=projects[0].content||'';
+  }
+  saveProjects();
+  saveHistory();
+  updateProjectPill();
+  renderProjects();
+}
+function showProjectsModal(){renderProjects();showModal('projectsModal');}
+function renderProjects(){
+  const el=document.getElementById('projectsList');
+  if(!el) return;
+  el.innerHTML=projects.map(p=>`
+    <div class="card" style="cursor:default">
+      <strong style="color:#00d4ff">${esc(p.name)}</strong>
+      <div class="muted">Updated ${formatDate(p.updatedAt)} · ${p.content.length} characters ${p.id===currentProjectId?'· current':''}</div>
+      <div class="row" style="margin-top:.65rem">
+        <button class="btn" onclick="loadProject('${p.id}')">Load</button>
+        <button class="btn" onclick="duplicateProject('${p.id}')">Duplicate</button>
+        <button class="btn danger" onclick="deleteProject('${p.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+function showHistoryModal(){renderHistory();showModal('historyModal');}
+function renderHistory(){
+  const el=document.getElementById('historyList');
+  if(!el) return;
+  const p=currentProject();
+  const list=p?(historyByProject[p.id]||[]):[];
+  el.innerHTML=list.length?list.map(s=>`
+    <div class="card" style="cursor:default">
+      <strong style="color:#00d4ff">${formatDate(s.createdAt)}</strong>
+      <div class="muted">${esc(s.reason)} · ${s.content.length} characters</div>
+      <div class="row" style="margin-top:.65rem">
+        <button class="btn" onclick="restoreSnapshot('${s.id}')">Restore</button>
+        <button class="btn" onclick="exportSnapshot('${s.id}','txt')">Export .txt</button>
+      </div>
+    </div>
+  `).join(''):'<p class="muted">No snapshots yet. Keep editing and autosave history will appear here.</p>';
+}
+function restoreSnapshot(id){
+  const p=currentProject();
+  if(!p) return;
+  const snap=(historyByProject[p.id]||[]).find(s=>s.id===id);
+  if(!snap) return;
+  addHistorySnapshot('before restore');
+  ta.value=snap.content;
+  saveCurrentProject();
+  closeModal('historyModal');
+}
+function exportSnapshot(id,type){
+  const p=currentProject();
+  const snap=p?(historyByProject[p.id]||[]).find(s=>s.id===id):null;
+  if(snap) downloadText(snap.content,`${slug(snap.projectName)}-${new Date(snap.createdAt).toISOString().slice(0,10)}.${type}`,type==='md'?'text/markdown':'text/plain');
+}
 
 // ── Reading mode: enter / exit ────────────────────────────────────────────────
 function enterReadingMode(){
@@ -1107,20 +1382,250 @@ function openTwitchLive(){
   closeModal('streamModal');
 }
 
+// ── Import / Export ───────────────────────────────────────────────────────────
+function downloadBlob(blob,filename){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function downloadText(text,filename,type='text/plain'){
+  downloadBlob(new Blob([text],{type}),filename);
+}
+function exportScript(type){
+  saveCurrentProject();
+  const p=currentProject();
+  const name=slug(p?p.name:'script');
+  if(type==='txt') downloadText(ta.value,`${name}.txt`,'text/plain');
+  else if(type==='md') downloadText(ta.value,`${name}.md`,'text/markdown');
+  else if(type==='docx') downloadBlob(createDocxBlob(ta.value,p?p.name:'Script'),`${name}.docx`);
+}
+function importScriptFile(file){
+  if(!file) return;
+  const lower=file.name.toLowerCase();
+  if(lower.endsWith('.docx')){
+    importDocxFile(file);
+    return;
+  }
+  if(!lower.endsWith('.txt')&&!lower.endsWith('.md')&&!lower.endsWith('.markdown')){
+    alert('Please choose a .txt or .md file.');
+    return;
+  }
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const content=String(reader.result||'');
+    const name=file.name.replace(/\.(txt|md|markdown)$/i,'');
+    createProject(name,content);
+    saveCurrentProject();
+    addHistorySnapshot('import');
+    closeModal('filesModal');
+  };
+  reader.readAsText(file);
+}
+async function importDocxFile(file){
+  try{
+    const entries=await unzipDocxEntries(await file.arrayBuffer());
+    const xml=entries['word/document.xml'];
+    if(!xml) throw new Error('word/document.xml missing');
+    const content=docxXmlToText(xml).trim();
+    if(!content) throw new Error('No readable text found');
+    createProject(file.name.replace(/\.docx$/i,''),content);
+    saveCurrentProject();
+    addHistorySnapshot('docx import');
+    closeModal('filesModal');
+  }catch(e){
+    alert(`Could not import this DOCX here: ${e.message}. Try exporting it as .txt or .md first.`);
+  }
+}
+function le16(view,off){return view.getUint16(off,true);}
+function le32(view,off){return view.getUint32(off,true);}
+async function unzipDocxEntries(buffer){
+  const bytes=new Uint8Array(buffer);
+  const view=new DataView(buffer);
+  let eocd=-1;
+  for(let i=bytes.length-22;i>=0&&i>bytes.length-66000;i--){
+    if(le32(view,i)===0x06054b50){eocd=i;break;}
+  }
+  if(eocd<0) throw new Error('Invalid ZIP container');
+  const count=le16(view,eocd+10);
+  let off=le32(view,eocd+16);
+  const dec=new TextDecoder();
+  const out={};
+  for(let i=0;i<count;i++){
+    if(le32(view,off)!==0x02014b50) throw new Error('Invalid ZIP directory');
+    const method=le16(view,off+10);
+    const compSize=le32(view,off+20);
+    const nameLen=le16(view,off+28);
+    const extraLen=le16(view,off+30);
+    const commentLen=le16(view,off+32);
+    const localOff=le32(view,off+42);
+    const name=dec.decode(bytes.slice(off+46,off+46+nameLen));
+    off+=46+nameLen+extraLen+commentLen;
+    if(!name.endsWith('.xml')) continue;
+    if(le32(view,localOff)!==0x04034b50) continue;
+    const localNameLen=le16(view,localOff+26);
+    const localExtraLen=le16(view,localOff+28);
+    const dataStart=localOff+30+localNameLen+localExtraLen;
+    const compressed=bytes.slice(dataStart,dataStart+compSize);
+    let data;
+    if(method===0){
+      data=compressed;
+    }else if(method===8 && 'DecompressionStream' in window){
+      const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      data=new Uint8Array(await new Response(stream).arrayBuffer());
+    }else{
+      continue;
+    }
+    out[name]=dec.decode(data);
+  }
+  return out;
+}
+function docxXmlToText(xmlText){
+  const doc=new DOMParser().parseFromString(xmlText,'application/xml');
+  const paras=Array.from(doc.getElementsByTagName('*')).filter(n=>n.localName==='p');
+  return paras.map(p=>{
+    let text='';
+    const nodes=Array.from(p.getElementsByTagName('*'));
+    for(const n of nodes){
+      if(n.localName==='t') text+=n.textContent;
+      else if(n.localName==='tab') text+='\t';
+      else if(n.localName==='br') text+='\n';
+    }
+    return text;
+  }).join('\n');
+}
+function xmlEsc(text){
+  return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function docxParagraph(text){
+  const runs=String(text).split('\n').map(line=>`<w:r><w:t xml:space="preserve">${xmlEsc(line)}</w:t></w:r>`).join('<w:r><w:br/></w:r>');
+  return `<w:p>${runs||'<w:r><w:t></w:t></w:r>'}</w:p>`;
+}
+function createDocxBlob(text,title){
+  const paragraphs=String(text).split(/\n{2,}/).map(docxParagraph).join('');
+  const documentXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraphs}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`;
+  const files=[
+    {name:'[Content_Types].xml',content:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'},
+    {name:'_rels/.rels',content:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>'},
+    {name:'docProps/core.xml',content:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xmlEsc(title)}</dc:title><dc:creator>Professional Teleprompter</dc:creator></cp:coreProperties>`},
+    {name:'word/document.xml',content:documentXml}
+  ];
+  return new Blob([makeZip(files)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+}
+function crc32(bytes){
+  let c=~0;
+  for(let i=0;i<bytes.length;i++){
+    c^=bytes[i];
+    for(let k=0;k<8;k++) c=(c>>>1)^(0xEDB88320&-(c&1));
+  }
+  return ~c>>>0;
+}
+function u16(n){return [n&255,(n>>>8)&255];}
+function u32(n){return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];}
+function makeZip(files){
+  const enc=new TextEncoder();
+  const chunks=[], central=[];
+  let offset=0;
+  for(const file of files){
+    const name=enc.encode(file.name);
+    const data=enc.encode(file.content);
+    const crc=crc32(data);
+    const local=new Uint8Array([
+      ...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),
+      ...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0)
+    ]);
+    chunks.push(local,name,data);
+    central.push({name,data,crc,offset});
+    offset+=local.length+name.length+data.length;
+  }
+  const centralStart=offset;
+  for(const file of central){
+    const header=new Uint8Array([
+      ...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),
+      ...u32(file.crc),...u32(file.data.length),...u32(file.data.length),...u16(file.name.length),...u16(0),...u16(0),
+      ...u16(0),...u16(0),...u32(0),...u32(file.offset)
+    ]);
+    chunks.push(header,file.name);
+    offset+=header.length+file.name.length;
+  }
+  const centralSize=offset-centralStart;
+  chunks.push(new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(centralSize),...u32(centralStart),...u16(0)]));
+  return new Blob(chunks);
+}
+
 // ── Templates ─────────────────────────────────────────────────────────────────
-const templates={
-  youtube:"Hey everyone, welcome back!\n\nToday we're covering [TOPIC].\n\nIf you find this helpful, hit subscribe!\n\n[pause]\n\nLet's dive right in...",
-  course:"Lesson [NUMBER]: [TITLE]\n\nBy the end of this lesson you will know:\n• [POINT 1]\n• [POINT 2]\n• [POINT 3]\n\n[pause]\n\n[MAIN CONTENT]\n\n[smile]\n\nSee you in the next lesson!",
-  social:"[HOOK — grab attention in first 3 seconds]\n\n[VALUE — the thing they came for]\n\n[pause]\n\n[CTA — follow for more]",
-  product:"Introducing [PRODUCT NAME].\n\nThe problem it solves: [PROBLEM]\n\n[pause]\n\nHere's how it works: [EXPLANATION]\n\nGet started at [LINK]"
-};
-function loadTemplate(k){
-  ta.value=templates[k]; localStorage.setItem('tp-script',templates[k]);
+function initTemplates(){
+  templateStore=safeJson(STORE.templates,null);
+  if(!Array.isArray(templateStore)||!templateStore.length){
+    templateStore=DEFAULT_TEMPLATES.map(t=>({...t}));
+    saveTemplates();
+  }
+}
+function saveTemplates(){saveJson(STORE.templates,templateStore);}
+function renderTemplates(){
+  const el=document.getElementById('templatesList');
+  if(!el) return;
+  el.innerHTML=templateStore.map(t=>`
+    <div class="card" style="cursor:default">
+      <strong style="color:#00d4ff">${esc(t.name)}</strong><br>
+      <small>${esc(t.description||'Custom template')}</small>
+      <div class="row" style="margin-top:.65rem">
+        <button class="btn" onclick="loadTemplate('${t.id}')">Load</button>
+        <button class="btn" onclick="renameTemplate('${t.id}')">Rename</button>
+        <button class="btn danger" onclick="deleteTemplate('${t.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+function loadTemplate(id){
+  const t=templateStore.find(x=>x.id===id);
+  if(!t) return;
+  addHistorySnapshot('before template');
+  ta.value=t.content;
+  saveCurrentProject();
+  queueHistorySnapshot();
   closeModal('templatesModal');
+}
+function saveTemplateFromCurrent(){
+  const input=document.getElementById('templateNameInput');
+  const name=input&&input.value.trim()?input.value.trim():'Custom Template';
+  templateStore.unshift({id:uid('tpl'),name,description:'Saved from current script',content:ta.value});
+  saveTemplates();
+  if(input) input.value='';
+  renderTemplates();
+}
+function renameTemplate(id){
+  const t=templateStore.find(x=>x.id===id);
+  if(!t) return;
+  const name=prompt('Template name',t.name);
+  if(!name||!name.trim()) return;
+  t.name=name.trim();
+  saveTemplates();
+  renderTemplates();
+}
+function deleteTemplate(id){
+  const t=templateStore.find(x=>x.id===id);
+  if(!t||!confirm(`Delete template "${t.name}"?`)) return;
+  templateStore=templateStore.filter(x=>x.id!==id);
+  saveTemplates();
+  renderTemplates();
+}
+function resetTemplates(){
+  if(!confirm('Reset templates to defaults? Custom templates will be removed.')) return;
+  templateStore=DEFAULT_TEMPLATES.map(t=>({...t}));
+  saveTemplates();
+  renderTemplates();
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-function showModal(id){document.getElementById(id).classList.add('active');}
+function showModal(id){
+  if(id==='templatesModal') renderTemplates();
+  if(id==='projectsModal') renderProjects();
+  if(id==='historyModal') renderHistory();
+  document.getElementById(id).classList.add('active');
+}
 function closeModal(id){document.getElementById(id).classList.remove('active');}
 document.querySelectorAll('.modal').forEach(m=>{
   m.addEventListener('click',e=>{if(e.target===m) m.classList.remove('active');});
