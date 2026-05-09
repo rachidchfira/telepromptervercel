@@ -398,8 +398,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <button class="btn" onclick="showModal('streamModal')">📡 Go Live</button>
     <div class="sep"></div>
     <button class="btn" id="voiceBtn" onclick="toggleVoice()">🎤 Voice<span class="status-badge inactive" id="voiceStatus">OFF</span></button>
-    <button class="btn" onclick="playScript()">▶️ Play</button>
-    <button class="btn" onclick="pauseScript()">⏸️ Pause</button>
+    <button class="btn" id="playBtn" onclick="playScript()">▶️ Play</button>
+    <button class="btn" id="pauseBtn" onclick="pauseScript()">⏸️ Pause</button>
     <button class="btn" onclick="resetScript()">🔄 Reset</button>
     <button class="btn" onclick="showSpeedModal()">⚡ <span id="speedLabel">Normal</span></button>
     <div class="sep"></div>
@@ -451,7 +451,7 @@ let currentLine=-1, currentPara=-1;
 let lastScrollAt=0;   // throttle scrollIntoView
 
 // Voice state
-const voice={active:false,ready:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastTranscript:'',lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:'',noiseFloor:0.015,stableHits:0,lockedUntil:0,lastAcceptedAt:0,lastAcceptedIdx:-1};
+const voice={active:false,starting:false,ready:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastTranscript:'',lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:'',noiseFloor:0.015,stableHits:0,lockedUntil:0,lastAcceptedAt:0,lastAcceptedIdx:-1,startedByPlay:false,followModeOverride:''};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
 const RMS_THRESHOLD=0.025, WORD_GATE_MS=1200, STOP_DELAY_MS=220;
 const VOICE_CONTEXT_WORDS=10;     // recent SR words used for phrase alignment
@@ -990,6 +990,7 @@ function startAutoScroll(){
   if(isPlaying) return;
   clearInterval(scrollInt);
   isPlaying=true;
+  updateReadingControls();
   scrollPos=disp.scrollTop;
   scrollInt=setInterval(()=>{
     const max=Math.max(0,disp.scrollHeight-disp.clientHeight);
@@ -1006,17 +1007,34 @@ function pauseAutoScroll(){
   isPlaying=false;
   clearInterval(scrollInt);
   scrollInt=null;
+  updateReadingControls();
+}
+
+function effectiveVoiceFollowMode(){
+  return voice.followModeOverride || voiceFollowMode;
+}
+
+function updateReadingControls(){
+  const playBtn=document.getElementById('playBtn');
+  const pauseBtn=document.getElementById('pauseBtn');
+  if(playBtn) playBtn.classList.toggle('active',voice.startedByPlay||isPlaying);
+  if(pauseBtn) pauseBtn.classList.toggle('active',voice.active||voice.starting||isPlaying);
 }
 
 // ── Reading controls ─────────────────────────────────────────────────────────
 async function playScript(){
-  if(voice.active) return;
-  await startVoice();
+  if(voice.starting) return;
+  if(voice.active){
+    if(voice.startedByPlay) pauseScript();
+    return;
+  }
+  await startVoice({startedByPlay:true,followModeOverride:'follow'});
 }
 function pauseScript(){
   cancelCountdown();
   pauseAutoScroll();
   if(voice.active) stopVoice();
+  updateReadingControls();
 }
 function resetScript(){
   pauseScript();
@@ -1455,8 +1473,9 @@ function setFocusMode(mode){
 function setVoiceFollowMode(mode){
   voiceFollowMode=mode==='correct'?'correct':'follow';
   localStorage.setItem('tp-voice-follow-mode',voiceFollowMode);
-  if(voice.active && voiceFollowMode==='follow') pauseAutoScroll();
-  if(voice.active && voice.ready && voiceFollowMode==='correct' && voiceSpeaking && !isPlaying) startAutoScroll();
+  const modeNow=effectiveVoiceFollowMode();
+  if(voice.active && modeNow==='follow') pauseAutoScroll();
+  if(voice.active && voice.ready && modeNow==='correct' && voiceSpeaking && !isPlaying) startAutoScroll();
 }
 function setCountdownSeconds(value){
   countdownSeconds=Math.max(0,Number(value)||0);
@@ -1474,14 +1493,19 @@ function setSpeechLang(lang){
 }
 
 // ── Voice ─────────────────────────────────────────────────────────────────────
-function toggleVoice(){voice.active?stopVoice():startVoice();}
+function toggleVoice(){voice.active?stopVoice():startVoice({startedByPlay:false,followModeOverride:''});}
 
-async function startVoice(){
+async function startVoice(options={}){
+  if(voice.active||voice.starting) return;
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert('❌ Voice requires Chrome or Edge.');return;}
   if(!ta.value.trim()){alert('Type or paste a script first — voice control needs words to follow.');return;}
   try{
     pauseAutoScroll();
+    voice.starting=true;
+    voice.startedByPlay=!!options.startedByPlay;
+    voice.followModeOverride=options.followModeOverride||'';
+    updateReadingControls();
     voice.stream=await navigator.mediaDevices.getUserMedia(
       {audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
 
@@ -1526,7 +1550,7 @@ async function startVoice(){
       if(e.error==='not-allowed'){alert('❌ Mic permission denied.');stopVoice();}
     };
 
-    voice.active=true; voice.ready=false; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
+    voice.active=true; voice.starting=false; voice.ready=false; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
     voice.lastSoundAt=0; voice.lastTranscript=''; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; voice.noiseFloor=0.015; voice.stableHits=0; voice.lockedUntil=0; voice.lastAcceptedAt=0; voice.lastAcceptedIdx=-1;
     enterReadingMode();
 
@@ -1534,6 +1558,7 @@ async function startVoice(){
     document.getElementById('voiceStatus').className='status-badge active';
     document.getElementById('voiceBtn').classList.add('active');
     document.getElementById('voiceBar').classList.add('on');
+    updateReadingControls();
 
     // RMS monitor — sole controller of scroll start/stop
     function monitor(){
@@ -1565,12 +1590,13 @@ async function startVoice(){
       document.getElementById('voiceHint').textContent=voiceStatusHint(soundNow,recentWords,speaking);
 
       // Keep the status label tied to real speech so silence never auto-scrolls.
+      const modeNow=effectiveVoiceFollowMode();
       if(speaking && !voiceSpeaking){
         voiceSpeaking=true;
-        if(voice.ready && voiceFollowMode==='correct' && !isPlaying) startAutoScroll();
+        if(voice.ready && modeNow==='correct' && !isPlaying) startAutoScroll();
       }else if(!speaking){
         if(voiceSpeaking) voiceSpeaking=false;
-        if(voice.ready && voiceFollowMode==='correct' && isPlaying) pauseAutoScroll();
+        if(voice.ready && modeNow==='correct' && isPlaying) pauseAutoScroll();
       }
       requestAnimationFrame(monitor);
     }
@@ -1583,13 +1609,19 @@ async function startVoice(){
 
     try{voice.recognition.start();}catch(e){}
     voice.ready=true;
-    if(voiceFollowMode==='correct' && voiceSpeaking) startAutoScroll();
-  }catch(e){alert('❌ Microphone access required.');}
+    if(effectiveVoiceFollowMode()==='correct' && voiceSpeaking) startAutoScroll();
+  }catch(e){
+    voice.starting=false;
+    voice.startedByPlay=false;
+    voice.followModeOverride='';
+    updateReadingControls();
+    alert('❌ Microphone access required.');
+  }
 }
 
 function stopVoice(){
   pauseAutoScroll();
-  voice.active=false; voice.ready=false; voiceSpeaking=false;
+  voice.active=false; voice.starting=false; voice.ready=false; voiceSpeaking=false;
   clearTimeout(voice.pauseTimer);
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
@@ -1599,6 +1631,9 @@ function stopVoice(){
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
   document.getElementById('voiceBar').classList.remove('on');
+  voice.startedByPlay=false;
+  voice.followModeOverride='';
+  updateReadingControls();
   const heardEl=document.getElementById('voiceHeard');
   if(heardEl) heardEl.textContent='';
   updateVoiceMatch(null);
