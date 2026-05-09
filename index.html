@@ -178,6 +178,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">DISPLAY</p>
     <button class="btn" id="mirrorBtn" onclick="toggleMirror()">🪞 Mirror Mode</button>
   </div>
+  <div style="margin-bottom:1.2rem">
+    <p style="color:rgba(255,255,255,.5);font-size:.75rem;letter-spacing:.05em;margin-bottom:.5rem">SPEECH LANGUAGE / ACCENT</p>
+    <select id="speechLang" onchange="setSpeechLang(this.value)" style="width:100%;padding:.55rem .7rem;border-radius:7px;border:1px solid #00d4ff;background:#050505;color:#fff;font-size:.85rem">
+      <option value="en-US">English — US</option>
+      <option value="en-GB">English — UK</option>
+      <option value="en-AU">English — Australia</option>
+      <option value="en-CA">English — Canada</option>
+      <option value="en-IN">English — India</option>
+      <option value="fr-FR">French — France</option>
+      <option value="es-ES">Spanish — Spain</option>
+      <option value="es-MX">Spanish — Mexico</option>
+      <option value="ar-SA">Arabic — Saudi Arabia</option>
+    </select>
+  </div>
   <button onclick="closeModal('settingsModal')" class="btn" style="margin-top:.5rem;width:100%">Close</button>
 </div></div>
 
@@ -203,6 +217,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <span id="voiceLabel">⚫ silent</span>
     <div id="levelWrap"><div id="levelBar"></div></div>
     <span id="voiceHeard" style="font-size:.7rem;opacity:.85;color:#fff;font-style:italic;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <span id="voiceMatch" style="font-size:.7rem;opacity:.75;color:#00d4ff;white-space:nowrap"></span>
     <span id="voiceHint" style="font-size:.7rem;opacity:.7"></span>
   </div>
 
@@ -229,7 +244,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 // ── State ─────────────────────────────────────────────────────────────────────
 let isPlaying=false, scrollPos=0, scrollSpeed=2, scrollInt=null;
 let cameraStream=null, mediaRecorder=null, recordedChunks=[], recordingStartTime=0, recordingInterval=null;
-let isMirror=false, textColor='#fff', fontSize='3rem';
+let isMirror=false, textColor='#fff', fontSize='3rem', speechLang='en-US';
 
 // Reading mode state — per-word spans approach, like teleprompter.com
 let readingMode=false;
@@ -239,15 +254,16 @@ let cursor=-1;        // index of the currently highlighted word
 let lastScrollAt=0;   // throttle scrollIntoView
 
 // Voice state
-const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true,lastSpokenWord:''};
+const voice={active:false,stream:null,ctx:null,analyser:null,recognition:null,pauseTimer:null,lastSoundAt:0,lastMatchOk:true,lastSpokenWord:'',lastConfidence:0,lastMode:''};
 let audioLevels=[], lastWordTime=0, voiceSpeaking=false;
 const RMS_THRESHOLD=0.04, WORD_GATE_MS=2000, STOP_DELAY_MS=300;
-const VOICE_CONTEXT_WORDS=8;      // recent SR words used for phrase alignment
-const SIM_THRESHOLD=0.62;          // dice similarity needed to count as a match
-const STRONG_SIM=0.9;              // a forward jump beyond +1 needs this
-const LOOK_AHEAD=14;               // search window past cursor
-const LOOK_BEHIND=3;               // allow short corrections without jumping around
-const SCROLL_THROTTLE_MS=90;       // limit scroll calls to be smooth
+const VOICE_CONTEXT_WORDS=10;     // recent SR words used for phrase alignment
+const SIM_THRESHOLD=0.62;         // dice similarity needed to count as a fuzzy word match
+const LOOK_AHEAD=18;              // normal search window past cursor
+const RECOVER_LOOK_AHEAD=100;     // jump-ahead search when the speaker skips forward
+const MIN_ADVANCE_CONF=0.78;      // local alignment must clear this to move
+const MIN_RECOVER_CONF=0.9;       // recover mode must be very confident
+const SCROLL_THROTTLE_MS=90;      // limit scroll calls to be smooth
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const ta   = document.getElementById('scriptInput');
@@ -263,6 +279,9 @@ ta.addEventListener('input',()=>{
 window.addEventListener('load',()=>{
   const s=localStorage.getItem('tp-script');
   if(s) ta.value=s;
+  speechLang=localStorage.getItem('tp-speech-lang')||speechLang;
+  const langEl=document.getElementById('speechLang');
+  if(langEl) langEl.value=speechLang;
   // Mobile adjustments
   if(isMobile){
     fontSize='2rem'; ta.style.fontSize=fontSize; disp.style.fontSize=fontSize;
@@ -287,6 +306,8 @@ function enterReadingMode(){
   rl.style.display='block';
   pw.style.display='block';
   voice.lastSpokenWord='';
+  voice.lastConfidence=0;
+  voice.lastMode='';
 }
 function exitReadingMode(){
   if(!readingMode) return;
@@ -438,6 +459,9 @@ function resetScript(){
   disp.scrollTop=0;
   cursor=-1;
   voice.lastSpokenWord='';
+  voice.lastConfidence=0;
+  voice.lastMode='';
+  updateVoiceMatch(null);
   lastWordTime=0;
   voiceSpeaking=false;
   audioLevels=[];
@@ -477,54 +501,193 @@ function wordSimilarity(scriptWord,spokenWord){
   return dice;
 }
 
+function getSpokenWords(transcript){
+  return (transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
+    .map(normalizeWord)
+    .filter(Boolean)
+    .slice(-VOICE_CONTEXT_WORDS);
+}
+
+function alignmentScore(idx,len,confidence,mode,expected){
+  const distance=Math.abs(idx-expected);
+  const modeBonus={
+    exactPhrase:34,
+    exactWord:22,
+    phrase:14,
+    fuzzy:4,
+    recoverExact:28,
+    recoverPhrase:18
+  }[mode]||0;
+  return confidence*100 + len*18 + modeBonus - distance*4;
+}
+
+function betterAlignment(a,b,expected){
+  if(!b) return a;
+  if(!a) return b;
+  if(b.score!==a.score) return b.score>a.score ? b : a;
+  const bd=Math.abs(b.idx-expected);
+  const ad=Math.abs(a.idx-expected);
+  if(bd!==ad) return bd<ad ? b : a;
+  return b.idx>a.idx ? b : a;
+}
+
+function makeAlignment(idx,len,confidence,mode,expected){
+  if(idx<0||idx>=scriptWords.length) return null;
+  if(cursor>=0 && idx<cursor) return null; // never jump backward on repeated words
+  return {
+    idx,
+    len,
+    confidence:Math.min(1,confidence),
+    mode,
+    score:alignmentScore(idx,len,confidence,mode,expected)
+  };
+}
+
+function exactPhraseAt(start,phrase){
+  for(let i=0;i<phrase.length;i++){
+    if(!scriptWords[start+i] || scriptWords[start+i].clean!==phrase[i]) return false;
+  }
+  return true;
+}
+
+function fuzzyPhraseAt(start,phrase){
+  let total=0;
+  for(let i=0;i<phrase.length;i++){
+    if(!scriptWords[start+i]) return 0;
+    const sim=wordSimilarity(scriptWords[start+i].clean,phrase[i]);
+    if(sim<SIM_THRESHOLD) return 0;
+    total+=sim;
+  }
+  return total/phrase.length;
+}
+
+function findExactAlignment(words,searchStart,searchEnd,expected,recover=false){
+  let best=null;
+  const maxLen=Math.min(words.length,VOICE_CONTEXT_WORDS,searchEnd+1);
+  for(let len=maxLen;len>=2;len--){
+    const phrase=words.slice(-len);
+    const firstStart=Math.max(0,searchStart-len+1);
+    const lastStart=Math.min(searchEnd-len+1,scriptWords.length-len);
+    for(let start=firstStart;start<=lastStart;start++){
+      const idx=start+len-1;
+      if(idx<searchStart||idx>searchEnd) continue;
+      if(exactPhraseAt(start,phrase)){
+        const conf=recover ? Math.min(1,0.94+len*0.015) : 1;
+        best=betterAlignment(best,makeAlignment(idx,len,conf,recover?'recoverExact':'exactPhrase',expected),expected);
+      }
+    }
+    if(best) return best;
+  }
+
+  if(recover) return best; // recovery requires a phrase, not a single-word guess
+
+  const spoken=words[words.length-1];
+  for(let idx=searchStart;idx<=searchEnd;idx++){
+    if(scriptWords[idx] && scriptWords[idx].clean===spoken){
+      const isExpected=idx===expected || idx===cursor;
+      const short=spoken.length<=3;
+      const conf=short && !isExpected ? 0.78 : (short ? 0.86 : 0.94);
+      best=betterAlignment(best,makeAlignment(idx,1,conf,'exactWord',expected),expected);
+    }
+  }
+  return best;
+}
+
+function findPhraseAlignment(words,searchStart,searchEnd,expected,recover=false){
+  let best=null;
+  const targetConfidence=recover ? MIN_RECOVER_CONF : MIN_ADVANCE_CONF;
+  const maxLen=Math.min(words.length,VOICE_CONTEXT_WORDS,searchEnd+1);
+  const minLen=recover ? 3 : 2;
+  for(let len=maxLen;len>=minLen;len--){
+    const phrase=words.slice(-len);
+    const firstStart=Math.max(0,searchStart-len+1);
+    const lastStart=Math.min(searchEnd-len+1,scriptWords.length-len);
+    for(let start=firstStart;start<=lastStart;start++){
+      const idx=start+len-1;
+      if(idx<searchStart||idx>searchEnd) continue;
+      const avg=fuzzyPhraseAt(start,phrase);
+      if(!avg) continue;
+      const conf=avg*(len>=3?1.04:1);
+      best=betterAlignment(best,makeAlignment(idx,len,conf,recover?'recoverPhrase':'phrase',expected),expected);
+    }
+    if(best && best.confidence>=targetConfidence) return best;
+  }
+  return best;
+}
+
+function findFuzzyWordAlignment(words,searchStart,searchEnd,expected){
+  let best=null;
+  const spoken=words[words.length-1];
+  if(spoken.length<=3) return null;
+  for(let idx=searchStart;idx<=searchEnd;idx++){
+    if(!scriptWords[idx]) continue;
+    const sim=wordSimilarity(scriptWords[idx].clean,spoken);
+    if(sim<0.84) continue;
+    best=betterAlignment(best,makeAlignment(idx,1,sim,'fuzzy',expected),expected);
+  }
+  return best;
+}
+
+function alignSpokenWords(words){
+  const expected=cursor<0 ? 0 : Math.min(scriptWords.length-1,cursor+1);
+  const localStart=Math.max(0,cursor<0?0:cursor);
+  const localEnd=Math.min(scriptWords.length-1,expected+LOOK_AHEAD);
+  const recoverStart=Math.min(scriptWords.length-1,localEnd+1);
+  const recoverEnd=Math.min(scriptWords.length-1,expected+RECOVER_LOOK_AHEAD);
+
+  const exact=findExactAlignment(words,localStart,localEnd,expected,false);
+  if(exact && exact.confidence>=MIN_ADVANCE_CONF) return exact;
+
+  const phrase=findPhraseAlignment(words,localStart,localEnd,expected,false);
+  if(phrase && phrase.confidence>=MIN_ADVANCE_CONF) return phrase;
+
+  const fuzzy=findFuzzyWordAlignment(words,localStart,localEnd,expected);
+  if(fuzzy && fuzzy.confidence>=0.86) return fuzzy;
+
+  if(recoverEnd-recoverStart>=2){
+    const recoverExact=findExactAlignment(words,recoverStart,recoverEnd,expected,true);
+    if(recoverExact && recoverExact.confidence>=MIN_RECOVER_CONF) return recoverExact;
+
+    const recoverPhrase=findPhraseAlignment(words,recoverStart,recoverEnd,expected,true);
+    if(recoverPhrase && recoverPhrase.confidence>=MIN_RECOVER_CONF) return recoverPhrase;
+  }
+
+  return null;
+}
+
+function updateVoiceMatch(alignment){
+  const el=document.getElementById('voiceMatch');
+  if(!el) return;
+  if(!alignment){
+    el.textContent='';
+    return;
+  }
+  const label=alignment.mode.replace(/([A-Z])/g,' $1').toLowerCase();
+  el.textContent=`${Math.round(alignment.confidence*100)}% ${label}`;
+}
+
 function matchSpoken(transcript){
   if(!scriptWords.length) return false;
-  const allWords=(transcript.match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)||[])
-    .map(normalizeWord)
-    .filter(Boolean);
-  if(!allWords.length) return false;
+  const words=getSpokenWords(transcript);
+  if(!words.length) return false;
 
-  const words=allWords.slice(-VOICE_CONTEXT_WORDS);
-
-  // Show what we heard so the user can see SR is alive
   const heardEl=document.getElementById('voiceHeard');
   if(heardEl) heardEl.textContent=words.slice(-6).join(' ');
 
-  const expected=cursor<0 ? 0 : Math.min(scriptWords.length-1,cursor+1);
-  const searchStart=Math.max(0,(cursor<0?0:cursor)-LOOK_BEHIND);
-  const searchEnd=Math.min(scriptWords.length-1,expected+LOOK_AHEAD);
-
-  let best=null;
-
-  for(let idx=searchStart;idx<=searchEnd;idx++){
-    const maxLen=Math.min(VOICE_CONTEXT_WORDS,words.length,idx+1);
-    for(let len=1;len<=maxLen;len++){
-      const scriptStart=idx-len+1;
-      const spokenStart=words.length-len;
-      let total=0, ok=true;
-      for(let j=0;j<len;j++){
-        const sim=wordSimilarity(scriptWords[scriptStart+j].clean,words[spokenStart+j]);
-        if(sim<SIM_THRESHOLD){ok=false;break;}
-        total+=sim;
-      }
-      if(!ok) continue;
-
-      const avg=total/len;
-      if(len===1 && idx<cursor) continue;
-      if(len===1 && idx>expected+1 && avg<STRONG_SIM) continue;
-
-      const distance=Math.abs(idx-expected);
-      const direction=idx>=expected ? 0.08 : -0.18;
-      const exactBonus=avg===1 ? 18 : 0;
-      const score=(avg*100)+(len*24)+exactBonus+direction-(distance*3);
-      if(!best||score>best.score) best={idx,score,len,avg};
-    }
+  const alignment=alignSpokenWords(words);
+  if(!alignment){
+    voice.lastConfidence=0;
+    voice.lastMode='';
+    updateVoiceMatch(null);
+    return false;
   }
 
-  if(!best) return false;
   voice.lastMatchOk=true;
+  voice.lastConfidence=alignment.confidence;
+  voice.lastMode=alignment.mode;
   voice.lastSpokenWord=words[words.length-1];
-  setCursor(best.idx,true);
+  updateVoiceMatch(alignment);
+  setCursor(alignment.idx,true);
   return true;
 }
 
@@ -566,6 +729,16 @@ function toggleMirror(){
   disp.classList.toggle('mirror',isMirror);
   document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
 }
+function setSpeechLang(lang){
+  speechLang=lang||'en-US';
+  localStorage.setItem('tp-speech-lang',speechLang);
+  if(voice.recognition){
+    try{
+      voice.recognition.lang=speechLang;
+      voice.recognition.stop();
+    }catch(e){}
+  }
+}
 
 // ── Voice ─────────────────────────────────────────────────────────────────────
 function toggleVoice(){voice.active?stopVoice():startVoice();}
@@ -590,7 +763,7 @@ async function startVoice(){
     voice.recognition=new SR();
     voice.recognition.continuous=true;
     voice.recognition.interimResults=true;
-    voice.recognition.lang='en-US';
+    voice.recognition.lang=speechLang;
     voice.recognition.onresult=(e)=>{
       let t='';
       for(let i=0;i<e.results.length;i++) t+=' '+e.results[i][0].transcript;
@@ -611,7 +784,7 @@ async function startVoice(){
     voice.recognition.start();
 
     voice.active=true; voiceSpeaking=false; lastWordTime=0; audioLevels=[];
-    voice.lastSoundAt=0; voice.lastMatchOk=true;
+    voice.lastSoundAt=0; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode='';
     enterReadingMode();
 
     document.getElementById('voiceStatus').textContent='ON';
@@ -643,7 +816,7 @@ async function startVoice(){
       document.getElementById('voiceLabel').textContent=speaking?'🟢 reading':'⚫ silent';
       document.getElementById('voiceHint').textContent=
         avg>RMS_THRESHOLD && !recentWords ? '(say a script word to start)' :
-        recentWords && !voice.lastMatchOk ? '(waiting for exact script word)' : '';
+        recentWords && !voice.lastMatchOk ? '(listening for a credible match)' : '';
 
       // Keep the status label tied to real speech so silence never auto-scrolls.
       if(speaking && !voiceSpeaking){
@@ -663,13 +836,14 @@ function stopVoice(){
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
   if(voice.stream) voice.stream.getTracks().forEach(t=>t.stop());
   if(voice.ctx) voice.ctx.close();
-  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastMatchOk=true; audioLevels=[];
+  voice.stream=null; voice.ctx=null; voice.analyser=null; voice.lastSoundAt=0; voice.lastMatchOk=true; voice.lastConfidence=0; voice.lastMode=''; audioLevels=[];
   document.getElementById('voiceStatus').textContent='OFF';
   document.getElementById('voiceStatus').className='status-badge inactive';
   document.getElementById('voiceBtn').classList.remove('active');
   document.getElementById('voiceBar').classList.remove('on');
   const heardEl=document.getElementById('voiceHeard');
   if(heardEl) heardEl.textContent='';
+  updateVoiceMatch(null);
   exitReadingMode();
 }
 
