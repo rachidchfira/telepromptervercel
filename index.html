@@ -35,8 +35,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #scriptDisplay .w{
   display:inline;padding:.04em .13em;margin:0 -.04em;border-radius:.2em;
   transition:background-color .12s ease, color .12s ease, box-shadow .12s ease;
-  color:inherit;
+  color:inherit;cursor:pointer;
 }
+#scriptDisplay .w:hover{box-shadow:0 0 0 1px rgba(126,232,255,.3)}
 #scriptDisplay.mode-word .w.spoken{color:rgba(255,255,255,.46)}
 #scriptDisplay.mode-word .w.current{
   background:#7ee8ff;color:#001014;
@@ -46,6 +47,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #scriptDisplay .w.current.conf-med{background:#7ee8ff;color:#001014}
 #scriptDisplay .w.current.conf-low{background:#ffd166;color:#160d00}
 #scriptDisplay .w.current.match-recover{box-shadow:0 0 0 2px rgba(255,209,102,.3),0 0 28px rgba(255,209,102,.55)}
+#scriptDisplay .w.current.match-backtrack{box-shadow:0 0 0 2px rgba(255,209,102,.38),0 0 30px rgba(255,209,102,.64)}
+#scriptDisplay .w.current.match-manual{box-shadow:0 0 0 2px rgba(145,247,197,.35),0 0 30px rgba(145,247,197,.56)}
 #scriptDisplay .w.current.match-fuzzy{box-shadow:0 0 0 2px rgba(126,232,255,.24),0 0 18px rgba(126,232,255,.45)}
 #scriptDisplay.mode-line .w.spoken{color:rgba(255,255,255,.55)}
 #scriptDisplay.mode-line .line.current-line{background:rgba(0,212,255,.13);box-shadow:inset 4px 0 #7ee8ff}
@@ -455,10 +458,13 @@ const VOICE_CONTEXT_WORDS=10;     // recent SR words used for phrase alignment
 const SIM_THRESHOLD=0.62;         // dice similarity needed to count as a fuzzy word match
 const LOOK_AHEAD=18;              // normal search window past cursor
 const RECOVER_LOOK_AHEAD=100;     // jump-ahead search when the speaker skips forward
+const BACKTRACK_LOOK_BEHIND=80;   // backward search when the reader corrects after a bad jump
+const BACKTRACK_NEAR_WORDS=24;    // allow two-word backtracks only when the target is nearby
 const MIN_ADVANCE_CONF=0.78;      // local alignment must clear this to move
 const MIN_RECOVER_CONF=0.9;       // recover mode must be very confident
+const MIN_BACKTRACK_CONF=0.92;    // backward moves need phrase-level confidence
 const SCROLL_THROTTLE_MS=90;      // limit scroll calls to be smooth
-const MATCH_CLASSES=['match-exact','match-phrase','match-fuzzy','match-recover','match-auto','conf-high','conf-med','conf-low'];
+const MATCH_CLASSES=['match-exact','match-phrase','match-fuzzy','match-recover','match-backtrack','match-manual','match-auto','conf-high','conf-med','conf-low'];
 
 // ── Elements ──────────────────────────────────────────────────────────────────
 const ta   = document.getElementById('scriptInput');
@@ -467,6 +473,7 @@ const rl   = document.getElementById('readingLine');
 const pw   = document.getElementById('progressWrap');
 const pb   = document.getElementById('progressBar');
 const co   = document.getElementById('countdownOverlay');
+disp.addEventListener('click',handleDisplayWordClick);
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 ta.addEventListener('input',()=>{
@@ -874,12 +881,36 @@ function applyMatchClasses(el,match){
   el.classList.remove(...MATCH_CLASSES);
   const mode=match&&match.mode?match.mode:'auto';
   const conf=match&&typeof match.confidence==='number'?match.confidence:1;
-  if(mode.startsWith('recover')) el.classList.add('match-recover');
+  if(mode.startsWith('backtrack')) el.classList.add('match-backtrack');
+  else if(mode==='manual') el.classList.add('match-manual');
+  else if(mode.startsWith('recover')) el.classList.add('match-recover');
   else if(mode==='fuzzy') el.classList.add('match-fuzzy');
   else if(mode==='phrase') el.classList.add('match-phrase');
   else if(mode==='auto') el.classList.add('match-auto');
   else el.classList.add('match-exact');
   el.classList.add(conf>=0.94?'conf-high':(conf>=0.84?'conf-med':'conf-low'));
+}
+
+function handleDisplayWordClick(e){
+  const word=e.target.closest?e.target.closest('.w'):null;
+  if(!word || !disp.contains(word)) return;
+  const idx=Number(word.dataset.i);
+  if(!Number.isInteger(idx)) return;
+  e.preventDefault();
+  jumpToWord(idx);
+}
+
+function jumpToWord(idx){
+  if(!wordSpans.length) return;
+  const next=Math.max(0,Math.min(wordSpans.length-1,idx));
+  voice.lastTranscript='';
+  voice.lastMatchOk=true;
+  voice.lastConfidence=1;
+  voice.lastMode='manual';
+  voice.lastSpokenWord=scriptWords[next]?scriptWords[next].clean:'';
+  updateVoiceMatch({confidence:1,mode:'manual'});
+  setCursor(next,true,{mode:'manual',confidence:1});
+  scrollPos=disp.scrollTop;
 }
 
 function updateFocusClasses(idx){
@@ -1063,7 +1094,10 @@ function alignmentScore(idx,len,confidence,mode,expected){
     phrase:14,
     fuzzy:4,
     recoverExact:28,
-    recoverPhrase:18
+    recoverPhrase:18,
+    backtrackExact:30,
+    backtrackPhrase:20,
+    manual:40
   }[mode]||0;
   return confidence*100 + len*18 + modeBonus - distance*4;
 }
@@ -1078,9 +1112,9 @@ function betterAlignment(a,b,expected){
   return b.idx>a.idx ? b : a;
 }
 
-function makeAlignment(idx,len,confidence,mode,expected){
+function makeAlignment(idx,len,confidence,mode,expected,allowBackward=false){
   if(idx<0||idx>=scriptWords.length) return null;
-  if(cursor>=0 && idx<cursor) return null; // never jump backward on repeated words
+  if(cursor>=0 && idx<cursor && !allowBackward) return null;
   return {
     idx,
     len,
@@ -1108,7 +1142,7 @@ function fuzzyPhraseAt(start,phrase){
   return total/phrase.length;
 }
 
-function findExactAlignment(words,searchStart,searchEnd,expected,recover=false){
+function findExactAlignment(words,searchStart,searchEnd,expected,recover=false,allowBackward=false,allowSingle=!recover&&!allowBackward){
   let best=null;
   const maxLen=Math.min(words.length,VOICE_CONTEXT_WORDS,searchEnd+1);
   for(let len=maxLen;len>=2;len--){
@@ -1120,31 +1154,32 @@ function findExactAlignment(words,searchStart,searchEnd,expected,recover=false){
       if(idx<searchStart||idx>searchEnd) continue;
       if(exactPhraseAt(start,phrase)){
         const conf=recover ? Math.min(1,0.94+len*0.015) : 1;
-        best=betterAlignment(best,makeAlignment(idx,len,conf,recover?'recoverExact':'exactPhrase',expected),expected);
+        const mode=allowBackward?'backtrackExact':(recover?'recoverExact':'exactPhrase');
+        best=betterAlignment(best,makeAlignment(idx,len,conf,mode,expected,allowBackward),expected);
       }
     }
     if(best) return best;
   }
 
-  if(recover) return best; // recovery requires a phrase, not a single-word guess
+  if(!allowSingle) return best; // recovery/backtracking requires a phrase, not a single-word guess
 
   const spoken=words[words.length-1];
   for(let idx=searchStart;idx<=searchEnd;idx++){
     if(scriptWords[idx] && scriptWords[idx].clean===spoken){
       const isExpected=idx===expected || idx===cursor;
       const short=spoken.length<=3;
-      const conf=short && !isExpected ? 0.78 : (short ? 0.86 : 0.94);
+      const conf=short && !isExpected ? 0.68 : (short ? 0.86 : 0.94);
       best=betterAlignment(best,makeAlignment(idx,1,conf,'exactWord',expected),expected);
     }
   }
   return best;
 }
 
-function findPhraseAlignment(words,searchStart,searchEnd,expected,recover=false){
+function findPhraseAlignment(words,searchStart,searchEnd,expected,recover=false,allowBackward=false){
   let best=null;
-  const targetConfidence=recover ? MIN_RECOVER_CONF : MIN_ADVANCE_CONF;
+  const targetConfidence=allowBackward ? MIN_BACKTRACK_CONF : (recover ? MIN_RECOVER_CONF : MIN_ADVANCE_CONF);
   const maxLen=Math.min(words.length,VOICE_CONTEXT_WORDS,searchEnd+1);
-  const minLen=recover ? 3 : 2;
+  const minLen=(recover||allowBackward) ? 3 : 2;
   for(let len=maxLen;len>=minLen;len--){
     const phrase=words.slice(-len);
     const firstStart=Math.max(0,searchStart-len+1);
@@ -1155,11 +1190,39 @@ function findPhraseAlignment(words,searchStart,searchEnd,expected,recover=false)
       const avg=fuzzyPhraseAt(start,phrase);
       if(!avg) continue;
       const conf=avg*(len>=3?1.04:1);
-      best=betterAlignment(best,makeAlignment(idx,len,conf,recover?'recoverPhrase':'phrase',expected),expected);
+      const mode=allowBackward?'backtrackPhrase':(recover?'recoverPhrase':'phrase');
+      best=betterAlignment(best,makeAlignment(idx,len,conf,mode,expected,allowBackward),expected);
     }
     if(best && best.confidence>=targetConfidence) return best;
   }
   return best;
+}
+
+function findBacktrackAlignment(words){
+  if(cursor<=0 || words.length<2) return null;
+  const searchStart=Math.max(0,cursor-BACKTRACK_LOOK_BEHIND);
+  const searchEnd=Math.max(0,cursor-1);
+  const maxLen=Math.min(words.length,VOICE_CONTEXT_WORDS,searchEnd-searchStart+1);
+  let best=null;
+
+  for(let len=maxLen;len>=2;len--){
+    const phrase=words.slice(-len);
+    const lastStart=Math.min(searchEnd-len+1,scriptWords.length-len);
+    for(let start=searchStart;start<=lastStart;start++){
+      const idx=start+len-1;
+      if(idx<searchStart||idx>searchEnd) continue;
+      const distance=cursor-idx;
+      if(len<3 && distance>BACKTRACK_NEAR_WORDS) continue;
+      if(exactPhraseAt(start,phrase)){
+        const conf=Math.min(1,(len>=3?0.96:0.91)+len*0.015);
+        best=betterAlignment(best,makeAlignment(idx,len,conf,'backtrackExact',cursor,true),cursor);
+      }
+    }
+    if(best && best.confidence>=MIN_BACKTRACK_CONF) return best;
+  }
+
+  const fuzzy=findPhraseAlignment(words,searchStart,searchEnd,cursor,false,true);
+  return fuzzy && fuzzy.confidence>=MIN_BACKTRACK_CONF ? fuzzy : best;
 }
 
 function findFuzzyWordAlignment(words,searchStart,searchEnd,expected){
@@ -1182,11 +1245,17 @@ function alignSpokenWords(words){
   const recoverStart=Math.min(scriptWords.length-1,localEnd+1);
   const recoverEnd=Math.min(scriptWords.length-1,expected+RECOVER_LOOK_AHEAD);
 
-  const exact=findExactAlignment(words,localStart,localEnd,expected,false);
-  if(exact && exact.confidence>=MIN_ADVANCE_CONF) return exact;
+  const exactPhrase=findExactAlignment(words,localStart,localEnd,expected,false,false,false);
+  if(exactPhrase && exactPhrase.confidence>=MIN_ADVANCE_CONF) return exactPhrase;
 
   const phrase=findPhraseAlignment(words,localStart,localEnd,expected,false);
   if(phrase && phrase.confidence>=MIN_ADVANCE_CONF) return phrase;
+
+  const backtrack=findBacktrackAlignment(words);
+  if(backtrack && backtrack.confidence>=MIN_BACKTRACK_CONF) return backtrack;
+
+  const exactWord=findExactAlignment(words,localStart,localEnd,expected,false,false,true);
+  if(exactWord && exactWord.confidence>=MIN_ADVANCE_CONF) return exactWord;
 
   const fuzzy=findFuzzyWordAlignment(words,localStart,localEnd,expected);
   if(fuzzy && fuzzy.confidence>=0.86) return fuzzy;
