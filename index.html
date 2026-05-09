@@ -989,19 +989,22 @@ function startAutoScroll(){
   },16);
 }
 
-// ── Scrolling (manual play mode) ──────────────────────────────────────────────
-async function playScript(){
-  if(isPlaying) return;
-  enterReadingMode();
-  if(!await runCountdown()) return;
-  startAutoScroll();
-}
-function pauseScript(){
-  cancelCountdown();
+function pauseAutoScroll(){
   if(!isPlaying) return;
   isPlaying=false;
   clearInterval(scrollInt);
   scrollInt=null;
+}
+
+// ── Reading controls ─────────────────────────────────────────────────────────
+async function playScript(){
+  if(voice.active) return;
+  await startVoice();
+}
+function pauseScript(){
+  cancelCountdown();
+  pauseAutoScroll();
+  if(voice.active) stopVoice();
 }
 function resetScript(){
   pauseScript();
@@ -1392,7 +1395,7 @@ function setFocusMode(mode){
 function setVoiceFollowMode(mode){
   voiceFollowMode=mode==='correct'?'correct':'follow';
   localStorage.setItem('tp-voice-follow-mode',voiceFollowMode);
-  if(voice.active && voiceFollowMode==='follow') pauseScript();
+  if(voice.active && voiceFollowMode==='follow') pauseAutoScroll();
   if(voice.active && voice.ready && voiceFollowMode==='correct' && voiceSpeaking && !isPlaying) startAutoScroll();
 }
 function setCountdownSeconds(value){
@@ -1418,7 +1421,7 @@ async function startVoice(){
   if(!SR){alert('❌ Voice requires Chrome or Edge.');return;}
   if(!ta.value.trim()){alert('Type or paste a script first — voice control needs words to follow.');return;}
   try{
-    pauseScript();
+    pauseAutoScroll();
     voice.stream=await navigator.mediaDevices.getUserMedia(
       {audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
 
@@ -1509,7 +1512,7 @@ async function startVoice(){
         if(voice.ready && voiceFollowMode==='correct' && !isPlaying) startAutoScroll();
       }else if(!speaking){
         if(voiceSpeaking) voiceSpeaking=false;
-        if(voice.ready && voiceFollowMode==='correct' && isPlaying) pauseScript();
+        if(voice.ready && voiceFollowMode==='correct' && isPlaying) pauseAutoScroll();
       }
       requestAnimationFrame(monitor);
     }
@@ -1527,7 +1530,7 @@ async function startVoice(){
 }
 
 function stopVoice(){
-  if(voiceFollowMode==='correct') pauseScript();
+  pauseAutoScroll();
   voice.active=false; voice.ready=false; voiceSpeaking=false;
   clearTimeout(voice.pauseTimer);
   if(voice.recognition){try{voice.recognition.stop();}catch(e){} voice.recognition=null;}
@@ -1876,7 +1879,7 @@ document.addEventListener('keydown',e=>{
 
   if(e.key===' ' || e.key==='Enter'){
     e.preventDefault();
-    isPlaying?pauseScript():playScript();
+    (isPlaying||voice.active)?pauseScript():playScript();
   }else if(e.key==='Escape'){
     e.preventDefault();
     resetScript();
