@@ -1023,12 +1023,14 @@ function updateReadingControls(){
 
 // ── Reading controls ─────────────────────────────────────────────────────────
 async function playScript(){
-  if(voice.starting) return;
-  if(voice.active){
-    if(voice.startedByPlay) pauseScript();
-    return;
-  }
-  await startVoice({startedByPlay:true,followModeOverride:'follow'});
+  // Timed auto-scroll (no voice). Toggles play/pause.
+  if(isPlaying){ pauseScript(); return; }
+  // Play is the manual scroll mode — if voice is on, turn it off first.
+  if(voice.active||voice.starting) stopVoice();
+  enterReadingMode();
+  const ok=await runCountdown();
+  if(!ok) return;
+  startAutoScroll();
 }
 function pauseScript(){
   cancelCountdown();
