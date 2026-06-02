@@ -499,14 +499,11 @@ window.addEventListener('load',()=>{
   if(followEl) followEl.value=voiceFollowMode;
   const countdownEl=document.getElementById('countdownSeconds');
   if(countdownEl) countdownEl.value=String(countdownSeconds);
-  // Mobile adjustments
+  // Restore saved display settings (color / font / mirror), defaulting to small font on mobile
+  applySavedDisplaySettings();
   if(isMobile){
-    fontSize='2rem';
-    applyFontSize();
     document.getElementById('mobileLiveTip').style.display='block';
     document.getElementById('desktopLiveTip').style.display='none';
-    document.getElementById('fs-lg').classList.remove('active');
-    document.getElementById('fs-md').classList.add('active');
   }
 });
 window.addEventListener('beforeunload',()=>{
@@ -1445,8 +1442,29 @@ function applyFontSize(){
 function setFontSize(size,id){
   fontSize=size;
   applyFontSize();
+  localStorage.setItem('tp-font-size',size);
   ['sm','md','lg','xl'].forEach(i=>document.getElementById('fs-'+i).classList.remove('active'));
   document.getElementById('fs-'+id).classList.add('active');
+}
+const fontIdBySize={'2rem':'sm','2.5rem':'md','3rem':'lg','4rem':'xl'};
+function selectSwatchFor(hex){
+  document.querySelectorAll('.swatch').forEach(s=>{
+    s.classList.toggle('selected',(s.getAttribute('onclick')||'').includes(`'${hex}'`));
+  });
+}
+function applySavedDisplaySettings(){
+  const savedFont=localStorage.getItem('tp-font-size');
+  const savedColor=localStorage.getItem('tp-text-color');
+  const savedMirror=localStorage.getItem('tp-mirror')==='1';
+  const font=savedFont||(isMobile?'2rem':fontSize);
+  setFontSize(font,fontIdBySize[font]||'lg');
+  if(savedColor){
+    textColor=savedColor;
+    ta.style.color=savedColor;
+    disp.style.color=savedColor;
+    selectSwatchFor(savedColor);
+  }
+  if(savedMirror && !isMirror) toggleMirror();
 }
 function nudgeFont(dir){
   const idx=Math.max(0,fontSteps.findIndex(f=>f.size===fontSize));
@@ -1457,13 +1475,15 @@ function setColor(hex,el){
   textColor=hex;
   ta.style.color=hex;
   disp.style.color=hex;
+  localStorage.setItem('tp-text-color',hex);
   document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
-  el.classList.add('selected');
+  if(el) el.classList.add('selected');
 }
 function toggleMirror(){
   isMirror=!isMirror;
   ta.classList.toggle('mirror',isMirror);
   disp.classList.toggle('mirror',isMirror);
+  localStorage.setItem('tp-mirror',isMirror?'1':'0');
   document.getElementById('mirrorBtn').classList.toggle('active',isMirror);
 }
 function setFocusMode(mode){
