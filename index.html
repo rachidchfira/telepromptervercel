@@ -28,7 +28,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #scriptInput::-moz-selection{background:rgba(0,212,255,.55);color:#fff}
 
 /* Reading display — structured spans, swapped in for the textarea while voice or play is on */
-#scriptDisplay{display:none;cursor:default;user-select:none;scroll-behavior:smooth}
+#scriptDisplay{display:none;cursor:default;user-select:none}
 #scriptDisplay .para{transition:opacity .15s ease,filter .15s ease}
 #scriptDisplay .line{min-height:1.7em;border-radius:.22em;padding:0 .12em;margin:0 -.12em;transition:background-color .14s ease,box-shadow .14s ease}
 #scriptDisplay .blank-line{height:1.7em}
@@ -993,7 +993,9 @@ function startAutoScroll(){
     const max=Math.max(0,disp.scrollHeight-disp.clientHeight);
     scrollPos=Math.min(max,scrollPos+scrollSpeed);
     disp.scrollTop=scrollPos;
-    syncCursorToScroll();
+    // Timed play uses the fixed reading-line band as the guide — no per-word
+    // highlight chasing the scroll center (that behaviour is for voice mode only).
+    if(voice.active) syncCursorToScroll();
     updateProgress();
     if(scrollPos>=max) pauseScript();
   },16);
